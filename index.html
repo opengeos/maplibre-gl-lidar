@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MapLibre GL LiDAR - Examples</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a5f7a 0%, #159895 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 2.5rem;
+    }
+
+    .subtitle {
+      color: rgba(255, 255, 255, 0.9);
+      text-align: center;
+      margin-bottom: 40px;
+      font-size: 1.1rem;
+    }
+
+    .examples-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .example-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    .example-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
+    }
+
+    .example-card h2 {
+      color: #333;
+      margin-bottom: 8px;
+      font-size: 1.3rem;
+    }
+
+    .example-card p {
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .example-card .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      background: #f0f0f0;
+      color: #555;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .tag.vanilla { background: #fff3e0; color: #ef6c00; }
+    .tag.react { background: #e1f5fe; color: #0277bd; }
+    .tag.typescript { background: #e3f2fd; color: #1565c0; }
+    .tag.lidar { background: #e8f5e9; color: #2e7d32; }
+
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .footer a {
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MapLibre GL LiDAR</h1>
+    <p class="subtitle">A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl</p>
+
+    <div class="examples-grid">
+      <a href="./examples/basic/index.html" class="example-card">
+        <h2>Basic Example</h2>
+        <p>Simple vanilla TypeScript example showing how to load and visualize LiDAR point clouds with the GUI control.</p>
+        <div class="tags">
+          <span class="tag vanilla">Vanilla JS</span>
+          <span class="tag typescript">TypeScript</span>
+          <span class="tag lidar">LiDAR</span>
+        </div>
+      </a>
+
+      <a href="./examples/react/index.html" class="example-card">
+        <h2>React Example</h2>
+        <p>React example demonstrating the React wrapper component and custom hooks for LiDAR visualization.</p>
+        <div class="tags">
+          <span class="tag react">React</span>
+          <span class="tag typescript">TypeScript</span>
+          <span class="tag lidar">LiDAR</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="footer">
+      <p>
+        <a href="https://github.com/opengeos/maplibre-gl-lidar">GitHub</a> ·
+        <a href="https://www.npmjs.com/package/maplibre-gl-lidar">npm</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

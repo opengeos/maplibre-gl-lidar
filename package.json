@@ -1,0 +1,115 @@
+{
+  "name": "maplibre-gl-lidar",
+  "version": "0.1.0",
+  "description": "A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/types/react.d.ts",
+        "default": "./dist/react.mjs"
+      },
+      "require": {
+        "types": "./dist/types/react.d.ts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./style.css": "./dist/maplibre-gl-lidar.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "build:examples": "vite build --config vite.examples.config.ts",
+    "preview": "vite preview",
+    "test": "vitest --run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "maplibre",
+    "maplibre-gl",
+    "lidar",
+    "point-cloud",
+    "las",
+    "laz",
+    "copc",
+    "deck.gl",
+    "visualization",
+    "3d",
+    "geospatial",
+    "react",
+    "typescript"
+  ],
+  "author": "Qiusheng Wu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opengeos/maplibre-gl-lidar.git"
+  },
+  "peerDependencies": {
+    "maplibre-gl": ">=3.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/extensions": "^9.0.0",
+    "@deck.gl/layers": "^9.0.0",
+    "@deck.gl/mapbox": "^9.0.0",
+    "@loaders.gl/core": "^4.2.0",
+    "@loaders.gl/las": "^4.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/ui": "^2.1.0",
+    "eslint": "^9.17.0",
+    "jsdom": "^25.0.0",
+    "maplibre-gl": "^5.14.0",
+    "prettier": "^3.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-dts": "^4.3.0",
+    "vitest": "^2.1.0"
+  }
+}
