@@ -88,6 +88,8 @@
     "@deck.gl/extensions": "^9.0.0",
     "@deck.gl/layers": "^9.0.0",
     "@deck.gl/mapbox": "^9.0.0",
+    "@loaders.gl/core": "^4.3.4",
+    "@loaders.gl/las": "^4.3.4",
     "@types/proj4": "^2.5.6",
     "copc": "^0.0.8",
     "proj4": "^2.20.2"

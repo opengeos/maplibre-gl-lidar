@@ -1,6 +1,8 @@
-import { Copc, Hierarchy, Getter } from 'copc';
+import { Copc, Hierarchy, Getter, Las } from 'copc';
 import type { Copc as CopcType } from 'copc';
 import { createLazPerf, type LazPerf } from 'laz-perf';
+import { load } from '@loaders.gl/core';
+import { LASLoader } from '@loaders.gl/las';
 import proj4 from 'proj4';
 import type { PointCloudData, ExtraPointAttributes, AttributeArray } from './types';
 import type { PointCloudBounds } from '../core/types';
@@ -228,6 +230,7 @@ export class PointCloudLoader {
 
   /**
    * Loads a COPC file from a URL using the copc.js library.
+   * Falls back to loaders.gl for unsupported LAS versions (e.g., 1.3).
    */
   private async _loadCopcFromUrl(url: string): Promise<PointCloudData> {
     this._reportProgress(5, 'Initializing decoder...');
@@ -253,6 +256,17 @@ export class PointCloudLoader {
           `(2) Use a CORS proxy, or (3) Host the file on a CORS-enabled server.`
         );
       }
+      // Check if this is an error that requires fallback to loaders.gl:
+      // - "Invalid version" - LAS version not supported by copc.js (only 1.2 and 1.4)
+      // - "COPC info VLR is required" - Regular LAS file, not COPC format
+      if (error instanceof Error && (
+        error.message.includes('Invalid version') ||
+        error.message.includes('COPC info VLR is required')
+      )) {
+        console.warn('copc.js cannot load this file, falling back to loaders.gl:', error.message);
+        this._reportProgress(10, 'Using alternative decoder...');
+        return await this._loadUrlWithLoadersGL(url);
+      }
       throw error;
     }
 
@@ -267,6 +281,7 @@ export class PointCloudLoader {
 
   /**
    * Loads a COPC file from an ArrayBuffer using the copc.js library.
+   * Falls back to loaders.gl for unsupported LAS versions (e.g., 1.3).
    */
   private async _loadCopcFromBuffer(buffer: ArrayBuffer): Promise<PointCloudData> {
     this._reportProgress(10, 'Initializing decoder...');
@@ -282,15 +297,458 @@ export class PointCloudLoader {
     await this._yieldToUI();
 
     // Parse COPC header and metadata
-    const copc = await Copc.create(getter);
+    try {
+      const copc = await Copc.create(getter);
 
-    this._reportProgress(20, 'Loading hierarchy...');
+      this._reportProgress(20, 'Loading hierarchy...');
+      await this._yieldToUI();
+
+      // Load the full hierarchy (all pages recursively)
+      const hierarchy = await this._loadFullHierarchy(getter, copc.info);
+
+      return await this._processCopcData(getter, copc, hierarchy, lazPerf);
+    } catch (error) {
+      // Check if this is an error that requires fallback:
+      // - "Invalid version" - LAS version not supported by copc.js (only 1.2 and 1.4)
+      // - "COPC info VLR is required" - Regular LAS file, not COPC format
+      if (error instanceof Error) {
+        if (error.message.includes('COPC info VLR is required')) {
+          // Regular LAS 1.2/1.4 file - try loading with Las module from copc.js
+          console.warn('Not a COPC file, trying to load as regular LAS:', error.message);
+          this._reportProgress(15, 'Loading as regular LAS file...');
+          try {
+            return await this._loadRegularLasFromBuffer(buffer, lazPerf);
+          } catch (lasError) {
+            // If Las module also fails, try loaders.gl
+            console.warn('Las module failed, falling back to loaders.gl:', lasError);
+            return await this._loadWithLoadersGL(buffer);
+          }
+        }
+        if (error.message.includes('Invalid version')) {
+          // LAS 1.0/1.1/1.3 - use loaders.gl
+          console.warn('copc.js does not support this LAS version, falling back to loaders.gl:', error.message);
+          this._reportProgress(15, 'Using alternative decoder...');
+          return await this._loadWithLoadersGL(buffer);
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Loads a regular LAS 1.2/1.4 file using copc.js Las module.
+   */
+  private async _loadRegularLasFromBuffer(buffer: ArrayBuffer, lazPerf: LazPerf): Promise<PointCloudData> {
+    this._reportProgress(20, 'Parsing LAS header...');
     await this._yieldToUI();
 
-    // Load the full hierarchy (all pages recursively)
-    const hierarchy = await this._loadFullHierarchy(getter, copc.info);
+    const uint8 = new Uint8Array(buffer);
 
-    return await this._processCopcData(getter, copc, hierarchy, lazPerf);
+    // Parse header
+    const header = Las.Header.parse(uint8);
+
+    // Check if file is compressed (LAZ)
+    const isCompressed = (header.pointDataRecordFormat & 0x80) !== 0 ||
+      header.generatingSoftware.toLowerCase().includes('laszip');
+
+    let pointData: Uint8Array;
+
+    if (isCompressed) {
+      this._reportProgress(30, 'Decompressing LAZ data...');
+      await this._yieldToUI();
+      pointData = await Las.PointData.decompressFile(uint8, lazPerf);
+    } else {
+      // For uncompressed LAS, extract point data directly
+      pointData = uint8.slice(header.pointDataOffset);
+    }
+
+    this._reportProgress(50, 'Processing points...');
+    await this._yieldToUI();
+
+    // Setup coordinate transformation
+    let transformer: ((coord: [number, number]) => [number, number]) | null = null;
+    let needsTransform = false;
+    let verticalUnitFactor = 1.0;
+    let wkt: string | undefined;
+
+    // Try to get WKT from VLRs
+    const getter = createBufferGetter(buffer);
+    try {
+      const vlrs = await Las.Vlr.walk(getter, header);
+      for (const vlr of vlrs) {
+        if (vlr.userId === 'LASF_Projection' && vlr.recordId === 2112) {
+          const vlrData = await Las.Vlr.fetch(getter, vlr);
+          wkt = new TextDecoder().decode(vlrData).replace(/\0/g, '');
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read VLRs:', e);
+    }
+
+    if (wkt) {
+      try {
+        const wktToUse = extractProjcsFromWkt(wkt);
+        const projConverter = proj4(wktToUse, 'EPSG:4326');
+        transformer = (coord: [number, number]) => projConverter.forward(coord) as [number, number];
+        needsTransform = true;
+        verticalUnitFactor = getVerticalUnitConversionFactor(wkt);
+      } catch (e) {
+        console.warn('Failed to setup coordinate transformation:', e);
+      }
+    }
+
+    // Create view for reading point data
+    const pointFormat = header.pointDataRecordFormat & 0x7F; // Mask off compression bit
+
+    // Create view - it needs header info and the point data buffer
+    const view = Las.View.create(pointData, header);
+
+    // Calculate bounds
+    let bounds: PointCloudBounds;
+    let coordinateOrigin: [number, number, number];
+
+    if (needsTransform && transformer) {
+      const [minLng, minLat] = transformer([header.min[0], header.min[1]]);
+      const [maxLng, maxLat] = transformer([header.max[0], header.max[1]]);
+
+      bounds = {
+        minX: Math.min(minLng, maxLng),
+        minY: Math.min(minLat, maxLat),
+        minZ: header.min[2] * verticalUnitFactor,
+        maxX: Math.max(minLng, maxLng),
+        maxY: Math.max(minLat, maxLat),
+        maxZ: header.max[2] * verticalUnitFactor,
+      };
+    } else {
+      bounds = {
+        minX: header.min[0],
+        minY: header.min[1],
+        minZ: header.min[2],
+        maxX: header.max[0],
+        maxY: header.max[1],
+        maxZ: header.max[2],
+      };
+    }
+
+    coordinateOrigin = [
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minY + bounds.maxY) / 2,
+      0,
+    ];
+
+    const totalPoints = header.pointCount;
+
+    this._reportProgress(60, `Allocating memory for ${totalPoints.toLocaleString()} points...`);
+    await this._yieldToUI();
+
+    // Allocate arrays
+    const positions = new Float32Array(totalPoints * 3);
+    const intensities = new Float32Array(totalPoints);
+    const classifications = new Uint8Array(totalPoints);
+
+    // Check if color data is available
+    const colorFormats = [2, 3, 5, 7, 8, 10];
+    const hasColor = colorFormats.includes(pointFormat);
+    let colors: Uint8Array | undefined;
+    if (hasColor) {
+      colors = new Uint8Array(totalPoints * 4);
+    }
+
+    // Get dimension getters
+    const xGetter = view.getter('X');
+    const yGetter = view.getter('Y');
+    const zGetter = view.getter('Z');
+    const intensityGetter = view.getter('Intensity');
+    const classGetter = view.getter('Classification');
+    const redGetter = hasColor ? view.getter('Red') : null;
+    const greenGetter = hasColor ? view.getter('Green') : null;
+    const blueGetter = hasColor ? view.getter('Blue') : null;
+
+    this._reportProgress(70, 'Processing point coordinates...');
+    await this._yieldToUI();
+
+    // Process points
+    for (let i = 0; i < totalPoints; i++) {
+      const x = xGetter(i);
+      const y = yGetter(i);
+      const z = zGetter(i) * verticalUnitFactor;
+
+      if (needsTransform && transformer) {
+        const [lng, lat] = transformer([x, y]);
+        positions[i * 3] = lng - coordinateOrigin[0];
+        positions[i * 3 + 1] = lat - coordinateOrigin[1];
+        positions[i * 3 + 2] = z;
+      } else {
+        positions[i * 3] = x - coordinateOrigin[0];
+        positions[i * 3 + 1] = y - coordinateOrigin[1];
+        positions[i * 3 + 2] = z;
+      }
+
+      intensities[i] = intensityGetter(i) / 65535;
+      classifications[i] = classGetter(i);
+
+      if (hasColor && colors && redGetter && greenGetter && blueGetter) {
+        colors[i * 4] = redGetter(i) >> 8;
+        colors[i * 4 + 1] = greenGetter(i) >> 8;
+        colors[i * 4 + 2] = blueGetter(i) >> 8;
+        colors[i * 4 + 3] = 255;
+      }
+
+      // Yield periodically
+      if (i % 100000 === 0 && i > 0) {
+        const progress = 70 + (i / totalPoints) * 25;
+        this._reportProgress(progress, `Processing points... ${i.toLocaleString()} / ${totalPoints.toLocaleString()}`);
+        await this._yieldToUI();
+      }
+    }
+
+    this._reportProgress(95, 'Finalizing...');
+
+    return {
+      positions,
+      intensities,
+      classifications,
+      colors,
+      pointCount: totalPoints,
+      bounds,
+      hasRGB: hasColor,
+      hasIntensity: true,
+      hasClassification: true,
+      coordinateOrigin,
+      wkt,
+    };
+  }
+
+  /**
+   * Loads a point cloud using loaders.gl (fallback for LAS 1.0/1.1/1.3).
+   */
+  private async _loadWithLoadersGL(buffer: ArrayBuffer): Promise<PointCloudData> {
+    this._reportProgress(20, 'Parsing point cloud data...');
+    await this._yieldToUI();
+
+    // Load using loaders.gl LASLoader
+    const data = await load(buffer, LASLoader, {
+      las: {
+        shape: 'mesh',
+        fp64: false,
+      },
+      worker: false,
+    });
+
+    this._reportProgress(50, 'Processing points...');
+    await this._yieldToUI();
+
+    // Extract header info from loaders.gl result
+    // loaders.gl stores header in loaderData.header
+    const loaderData = data.loaderData || {};
+    const header = loaderData.header || {};
+    const totalPoints = header.pointsCount || header.vertexCount ||
+      (data.attributes?.POSITION?.value?.length ? data.attributes.POSITION.value.length / 3 : 0);
+
+    // Get position data
+    const positionAttr = data.attributes?.POSITION || data.attributes?.positions;
+    const sourcePositions = positionAttr?.value;
+
+    if (!sourcePositions || totalPoints === 0) {
+      throw new Error('No point data found in file');
+    }
+
+    // Setup coordinate transformation if WKT/projection is available
+    // loaders.gl stores projection info in various places
+    let transformer: ((coord: [number, number]) => [number, number]) | null = null;
+    let needsTransform = false;
+    let verticalUnitFactor = 1.0;
+
+    // Try to find WKT in various locations where loaders.gl might store it
+    let wkt: string | undefined;
+    if (loaderData.vlrs) {
+      // Look for GeoKeyDirectoryTag or WKT in VLRs
+      for (const vlr of loaderData.vlrs) {
+        if (vlr.userId === 'LASF_Projection') {
+          if (vlr.recordId === 2112) {
+            // OGC WKT
+            wkt = new TextDecoder().decode(vlr.data);
+          }
+        }
+      }
+    }
+    // Also check header.wkt as fallback
+    wkt = wkt || header.wkt || header.projection?.wkt;
+
+    if (wkt) {
+      try {
+        const wktToUse = extractProjcsFromWkt(wkt);
+        const projConverter = proj4(wktToUse, 'EPSG:4326');
+        transformer = (coord: [number, number]) => projConverter.forward(coord) as [number, number];
+        needsTransform = true;
+        verticalUnitFactor = getVerticalUnitConversionFactor(wkt);
+      } catch (e) {
+        console.warn('Failed to setup coordinate transformation:', e);
+      }
+    }
+
+    // Check if coordinates look like they need transformation
+    // (i.e., they're not in valid WGS84 range)
+    const sampleX = sourcePositions[0];
+    const sampleY = sourcePositions[1];
+    const looksLikeProjected = Math.abs(sampleX) > 180 || Math.abs(sampleY) > 90;
+
+    if (looksLikeProjected && !needsTransform) {
+      console.warn(
+        'Point cloud appears to be in a projected coordinate system but no WKT/projection info was found. ' +
+        'Coordinates may not display correctly on the map.'
+      );
+    }
+
+    // Calculate bounds from raw data
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+    for (let i = 0; i < totalPoints; i++) {
+      const x = sourcePositions[i * 3];
+      const y = sourcePositions[i * 3 + 1];
+      const z = sourcePositions[i * 3 + 2];
+
+      if (needsTransform && transformer) {
+        const [lng, lat] = transformer([x, y]);
+        minX = Math.min(minX, lng);
+        maxX = Math.max(maxX, lng);
+        minY = Math.min(minY, lat);
+        maxY = Math.max(maxY, lat);
+      } else {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+      const zScaled = z * verticalUnitFactor;
+      minZ = Math.min(minZ, zScaled);
+      maxZ = Math.max(maxZ, zScaled);
+    }
+
+    // Validate that bounds are in valid WGS84 range
+    if (Math.abs(minY) > 90 || Math.abs(maxY) > 90 || Math.abs(minX) > 180 || Math.abs(maxX) > 180) {
+      throw new Error(
+        'Point cloud coordinates are not in WGS84 (latitude/longitude) format. ' +
+        'The file appears to use a projected coordinate system but no valid projection information was found. ' +
+        'Please ensure the LAS file contains proper CRS metadata (WKT in VLR records).'
+      );
+    }
+
+    const bounds: PointCloudBounds = { minX, minY, minZ, maxX, maxY, maxZ };
+    const coordinateOrigin: [number, number, number] = [
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minY + bounds.maxY) / 2,
+      0,
+    ];
+
+    this._reportProgress(70, 'Allocating arrays...');
+    await this._yieldToUI();
+
+    // Allocate output arrays
+    const positions = new Float32Array(totalPoints * 3);
+    const intensities = new Float32Array(totalPoints);
+    const classifications = new Uint8Array(totalPoints);
+
+    // Check for color data
+    const colorAttr = data.attributes?.COLOR_0 || data.attributes?.colors;
+    const sourceColors = colorAttr?.value;
+    const hasColor = sourceColors && sourceColors.length >= totalPoints * 3;
+    let colors: Uint8Array | undefined;
+    if (hasColor) {
+      colors = new Uint8Array(totalPoints * 4);
+    }
+
+    // Check for intensity
+    const intensityAttr = data.attributes?.intensity;
+    const sourceIntensity = intensityAttr?.value;
+    const hasIntensity = sourceIntensity && sourceIntensity.length >= totalPoints;
+
+    // Check for classification
+    const classAttr = data.attributes?.classification;
+    const sourceClass = classAttr?.value;
+    const hasClassification = sourceClass && sourceClass.length >= totalPoints;
+
+    this._reportProgress(80, 'Transforming coordinates...');
+    await this._yieldToUI();
+
+    // Process points
+    for (let i = 0; i < totalPoints; i++) {
+      const x = sourcePositions[i * 3];
+      const y = sourcePositions[i * 3 + 1];
+      const z = sourcePositions[i * 3 + 2] * verticalUnitFactor;
+
+      if (needsTransform && transformer) {
+        const [lng, lat] = transformer([x, y]);
+        positions[i * 3] = lng - coordinateOrigin[0];
+        positions[i * 3 + 1] = lat - coordinateOrigin[1];
+        positions[i * 3 + 2] = z;
+      } else {
+        positions[i * 3] = x - coordinateOrigin[0];
+        positions[i * 3 + 1] = y - coordinateOrigin[1];
+        positions[i * 3 + 2] = z;
+      }
+
+      // Intensity (normalize to 0-1)
+      if (hasIntensity) {
+        intensities[i] = sourceIntensity[i] / 65535;
+      }
+
+      // Classification
+      if (hasClassification) {
+        classifications[i] = sourceClass[i];
+      }
+
+      // Colors
+      if (hasColor && colors) {
+        const colorSize = colorAttr.size || 3;
+        if (colorSize === 4) {
+          colors[i * 4] = sourceColors[i * 4];
+          colors[i * 4 + 1] = sourceColors[i * 4 + 1];
+          colors[i * 4 + 2] = sourceColors[i * 4 + 2];
+          colors[i * 4 + 3] = sourceColors[i * 4 + 3];
+        } else {
+          colors[i * 4] = sourceColors[i * 3];
+          colors[i * 4 + 1] = sourceColors[i * 3 + 1];
+          colors[i * 4 + 2] = sourceColors[i * 3 + 2];
+          colors[i * 4 + 3] = 255;
+        }
+      }
+    }
+
+    this._reportProgress(95, 'Finalizing...');
+
+    return {
+      positions,
+      intensities,
+      classifications,
+      colors,
+      pointCount: totalPoints,
+      bounds,
+      hasRGB: hasColor,
+      hasIntensity,
+      hasClassification,
+      coordinateOrigin,
+      wkt,
+    };
+  }
+
+  /**
+   * Loads a point cloud from URL using loaders.gl (fallback for unsupported LAS versions).
+   */
+  private async _loadUrlWithLoadersGL(url: string): Promise<PointCloudData> {
+    this._reportProgress(15, 'Downloading file...');
+    await this._yieldToUI();
+
+    // Fetch the file
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    }
+    const buffer = await response.arrayBuffer();
+
+    return await this._loadWithLoadersGL(buffer);
   }
 
   /**

@@ -363,9 +363,11 @@ console.log(`Loaded ${data.pointCount} points`);
 
 ## Supported Formats
 
-- LAS 1.0 - 1.4
+- LAS 1.0 - 1.4 (all versions supported via copc.js + loaders.gl fallback)
 - LAZ (compressed LAS)
 - COPC (Cloud Optimized Point Cloud) - with dynamic streaming support
+
+**Note:** LAS 1.2 and 1.4 are loaded using copc.js for optimal performance. LAS 1.0, 1.1, and 1.3 files automatically fall back to @loaders.gl/las.
 
 ## Coordinate Systems
 
@@ -378,7 +380,8 @@ Point clouds are automatically transformed to WGS84 (EPSG:4326) for display on t
 ## Dependencies
 
 - [deck.gl](https://deck.gl/) - WebGL visualization layers
-- [copc.js](https://github.com/connormanning/copc.js) - COPC/LAS/LAZ parsing (supports LAS 1.4)
+- [copc.js](https://github.com/connormanning/copc.js) - COPC/LAS/LAZ parsing (LAS 1.2/1.4)
+- [@loaders.gl/las](https://loaders.gl/modules/las/docs) - LAS parsing fallback (LAS 1.0/1.1/1.3)
 - [laz-perf](https://github.com/hobu/laz-perf) - LAZ decompression
 - [proj4](http://proj4js.org/) - Coordinate transformation
 - [maplibre-gl](https://maplibre.org/) - Map rendering
