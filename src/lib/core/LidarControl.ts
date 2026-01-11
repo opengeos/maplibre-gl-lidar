@@ -306,25 +306,30 @@ export class LidarControl implements IControl {
     source: string | File | ArrayBuffer,
     options?: { loadingMode?: CopcLoadingMode }
   ): Promise<PointCloudInfo> {
-    // Check if this is a COPC file from URL
+    // Check if this is a COPC file
     const isCopcUrl =
       typeof source === 'string' &&
       (source.startsWith('http://') || source.startsWith('https://')) &&
       /\.copc\./i.test(source);
 
+    const isCopcFile =
+      source instanceof File && /\.copc\./i.test(source.name);
+
+    const isCopc = isCopcUrl || isCopcFile;
+
     // Determine loading mode:
     // - If explicitly specified in options, use that
     // - If set in control options, use that
-    // - For COPC URLs, default to 'dynamic'
+    // - For COPC (URL or local file), default to 'dynamic'
     // - Otherwise default to 'full'
     const mode =
       options?.loadingMode ??
       this._options.copcLoadingMode ??
-      (isCopcUrl ? 'dynamic' : 'full');
+      (isCopc ? 'dynamic' : 'full');
 
-    // Use streaming mode for COPC URLs with dynamic mode
-    if (mode === 'dynamic' && isCopcUrl) {
-      return this.loadPointCloudStreaming(source as string);
+    // Use streaming mode for COPC sources with dynamic mode
+    if (mode === 'dynamic' && isCopc) {
+      return this.loadPointCloudStreaming(source);
     }
 
     const id = generateId('pc');
@@ -457,15 +462,15 @@ export class LidarControl implements IControl {
 
   /**
    * Loads a point cloud using streaming (on-demand) loading.
-   * Ideal for large COPC files accessed via URL.
+   * Ideal for large COPC files - supports both URLs and local files.
    * Points are loaded dynamically based on viewport and zoom level.
    *
-   * @param url - URL to the COPC file
+   * @param source - URL string, File object, or ArrayBuffer
    * @param options - Optional streaming options
    * @returns Promise resolving to initial point cloud info
    */
   async loadPointCloudStreaming(
-    url: string,
+    source: string | File | ArrayBuffer,
     options?: StreamingLoaderOptions
   ): Promise<PointCloudInfo> {
     // Stop any existing streaming first
@@ -473,7 +478,16 @@ export class LidarControl implements IControl {
 
     const id = generateId('pc-stream');
     this._streamingPointCloudId = id;
-    const name = getFilename(url);
+
+    // Determine name based on source type
+    let name: string;
+    if (typeof source === 'string') {
+      name = getFilename(source);
+    } else if (source instanceof File) {
+      name = source.name;
+    } else {
+      name = `PointCloud ${id}`;
+    }
 
     this.setState({ loading: true, error: null, streamingActive: true });
     this._emit('loadstart');
@@ -481,7 +495,7 @@ export class LidarControl implements IControl {
 
     try {
       // Create streaming loader with options
-      this._streamingLoader = new CopcStreamingLoader(url, {
+      this._streamingLoader = new CopcStreamingLoader(source, {
         pointBudget: options?.pointBudget ?? this._options.streamingPointBudget,
         maxConcurrentRequests:
           options?.maxConcurrentRequests ?? this._options.streamingMaxConcurrentRequests,
@@ -553,7 +567,7 @@ export class LidarControl implements IControl {
         hasRGB,
         hasIntensity: true,
         hasClassification: true,
-        source: url,
+        source: typeof source === 'string' ? source : name,
         wkt: undefined, // Will be available after first load
       };
 
@@ -594,15 +608,15 @@ export class LidarControl implements IControl {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
-      // Check if this is a CORS error - fallback to downloading the file
+      // Check if this is a CORS error - fallback to downloading the file (only for URL sources)
       const isCorsError =
         error.message.includes('CORS') ||
         error.message === 'Failed to fetch' ||
         (err instanceof TypeError && error.message === 'Failed to fetch');
 
-      if (isCorsError) {
+      if (isCorsError && typeof source === 'string') {
         console.warn(
-          `CORS error detected for ${url}. Falling back to download mode...`
+          `CORS error detected for ${source}. Falling back to download mode...`
         );
 
         // Clean up streaming state
@@ -620,7 +634,7 @@ export class LidarControl implements IControl {
         this._panelBuilder?.updateLoadingProgress(5, 'CORS blocked - downloading file...');
 
         // Fallback to full download
-        return this._loadPointCloudFullDownload(url);
+        return this._loadPointCloudFullDownload(source);
       }
 
       this.setState({

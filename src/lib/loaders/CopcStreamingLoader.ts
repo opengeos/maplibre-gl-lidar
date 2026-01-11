@@ -1,4 +1,4 @@
-import { Copc, Hierarchy } from 'copc';
+import { Copc, Hierarchy, Getter } from 'copc';
 import type { Copc as CopcType } from 'copc';
 import { createLazPerf, type LazPerf } from 'laz-perf';
 import proj4 from 'proj4';
@@ -13,6 +13,21 @@ import type {
 } from './streaming-types';
 import type { PointCloudData, ExtraPointAttributes, AttributeArray } from './types';
 import type { PointCloudBounds } from '../core/types';
+
+/**
+ * Source type for streaming loader - can be URL, File, or ArrayBuffer
+ */
+export type StreamingSource = string | File | ArrayBuffer;
+
+/**
+ * Creates a getter function from an ArrayBuffer for copc.js
+ */
+function createBufferGetter(buffer: ArrayBuffer): Getter {
+  const uint8 = new Uint8Array(buffer);
+  return async (begin: number, end: number): Promise<Uint8Array> => {
+    return uint8.slice(begin, end);
+  };
+}
 
 /**
  * Configuration for attribute storage types
@@ -159,9 +174,11 @@ const DEFAULT_OPTIONS: Required<StreamingLoaderOptions> = {
 /**
  * Streams COPC point cloud data on-demand based on viewport.
  * Implements center-first priority loading and respects point budget.
+ * Supports both URL and local file (File/ArrayBuffer) sources.
  */
 export class CopcStreamingLoader {
-  private _url: string;
+  private _originalSource: StreamingSource;
+  private _source: string | Getter | null = null; // URL string or Getter for buffer
   private _copc: CopcType | null = null;
   private _lazPerf: LazPerf | null = null;
   private _options: Required<StreamingLoaderOptions>;
@@ -216,11 +233,11 @@ export class CopcStreamingLoader {
   /**
    * Creates a new CopcStreamingLoader instance.
    *
-   * @param url - URL to the COPC file
+   * @param source - URL string, File object, or ArrayBuffer
    * @param options - Streaming options
    */
-  constructor(url: string, options?: StreamingLoaderOptions) {
-    this._url = url;
+  constructor(source: StreamingSource, options?: StreamingLoaderOptions) {
+    this._originalSource = source;
     this._options = { ...DEFAULT_OPTIONS, ...options };
   }
 
@@ -239,21 +256,35 @@ export class CopcStreamingLoader {
     // Initialize LazPerf for decompression
     this._lazPerf = await getLazPerf();
 
-    // Parse COPC header and metadata
-    try {
-      this._copc = await Copc.create(this._url);
-    } catch (error) {
-      // Check if this is likely a CORS error
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error(
-          `Failed to fetch from URL. This is likely a CORS (Cross-Origin Resource Sharing) error. ` +
-          `The server at "${new URL(this._url).hostname}" doesn't allow requests from this origin. ` +
-          `Solutions: (1) Download the file locally and load it as a file, ` +
-          `(2) Use a CORS proxy, or (3) Host the file on a CORS-enabled server.`
-        );
+    // Setup source - URL string or Getter for local files
+    if (typeof this._originalSource === 'string') {
+      // URL source
+      this._source = this._originalSource;
+      try {
+        this._copc = await Copc.create(this._source);
+      } catch (error) {
+        // Check if this is likely a CORS error
+        if (error instanceof TypeError && error.message === 'Failed to fetch') {
+          throw new Error(
+            `Failed to fetch from URL. This is likely a CORS (Cross-Origin Resource Sharing) error. ` +
+            `The server at "${new URL(this._source).hostname}" doesn't allow requests from this origin. ` +
+            `Solutions: (1) Download the file locally and load it as a file, ` +
+            `(2) Use a CORS proxy, or (3) Host the file on a CORS-enabled server.`
+          );
+        }
+        throw error;
       }
-      throw error;
+    } else if (this._originalSource instanceof File) {
+      // File source - read into buffer first
+      const buffer = await this._originalSource.arrayBuffer();
+      this._source = createBufferGetter(buffer);
+      this._copc = await Copc.create(this._source);
+    } else {
+      // ArrayBuffer source
+      this._source = createBufferGetter(this._originalSource);
+      this._copc = await Copc.create(this._source);
     }
+
     const { header, info } = this._copc;
 
     // Store root hierarchy page for later traversal
@@ -475,7 +506,7 @@ export class CopcStreamingLoader {
    * @param page - Hierarchy page to load
    */
   private async _loadHierarchyRecursive(page: Hierarchy.Page): Promise<void> {
-    const subtree = await Hierarchy.load(this._url, page);
+    const subtree = await Hierarchy.load(this._source!, page);
 
     // Store all nodes from this page
     for (const [key, node] of Object.entries(subtree.nodes)) {
@@ -610,7 +641,7 @@ export class CopcStreamingLoader {
       };
 
       const view = await Copc.loadPointDataView(
-        this._url,
+        this._source!,
         this._copc!,
         hierarchyNode,
         { lazPerf: this._lazPerf! }
