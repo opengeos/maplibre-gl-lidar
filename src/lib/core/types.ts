@@ -116,6 +116,12 @@ export interface LidarControlOptions {
    * @default false
    */
   pickable?: boolean;
+
+  /**
+   * Whether to automatically zoom to the data extent after loading
+   * @default true
+   */
+  autoZoom?: boolean;
 }
 
 /**

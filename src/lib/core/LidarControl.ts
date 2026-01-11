@@ -30,6 +30,7 @@ const DEFAULT_OPTIONS: Required<LidarControlOptions> = {
   pointBudget: 1000000,
   elevationRange: null,
   pickable: false,
+  autoZoom: true,
 };
 
 /**
@@ -330,6 +331,11 @@ export class LidarControl implements IControl {
 
       // Emit load event
       this._emitWithData('load', { pointCloud: info });
+
+      // Auto-zoom to the loaded point cloud
+      if (this._options.autoZoom) {
+        this.flyToPointCloud(id);
+      }
 
       return info;
     } catch (err) {
