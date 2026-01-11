@@ -456,19 +456,31 @@ export class LidarControl implements IControl {
 
       this._pointCloudManager?.removePointCloud(id);
       const pointClouds = this._state.pointClouds.filter((pc) => pc.id !== id);
-      this.setState({
+
+      // Reset classification state when removing datasets
+      // (classifications will be re-extracted when new data is loaded)
+      const stateUpdate: Partial<LidarState> = {
         pointClouds,
         activePointCloudId:
           this._state.activePointCloudId === id
             ? pointClouds[0]?.id || null
             : this._state.activePointCloudId,
-      });
+        availableClassifications: new Set(),
+        hiddenClassifications: new Set(),
+      };
+
+      this.setState(stateUpdate);
       this._emit('unload');
     } else {
       // Unload all including streaming
       this.stopStreaming();
       this._pointCloudManager?.clear();
-      this.setState({ pointClouds: [], activePointCloudId: null });
+      this.setState({
+        pointClouds: [],
+        activePointCloudId: null,
+        availableClassifications: new Set(),
+        hiddenClassifications: new Set(),
+      });
       this._emit('unload');
     }
   }
@@ -879,6 +891,7 @@ export class LidarControl implements IControl {
       const pointClouds = this._state.pointClouds.filter((pc) => pc.id !== id);
       const hasActiveStreaming = this._streamingLoaders.size > 0;
 
+      // Reset classification state when removing datasets
       this.setState({
         pointClouds,
         activePointCloudId:
@@ -887,6 +900,8 @@ export class LidarControl implements IControl {
             : this._state.activePointCloudId,
         streamingActive: hasActiveStreaming,
         streamingProgress: hasActiveStreaming ? this._state.streamingProgress : undefined,
+        availableClassifications: new Set(),
+        hiddenClassifications: new Set(),
       });
 
       this._emit('streamingstop');
@@ -917,6 +932,7 @@ export class LidarControl implements IControl {
         (pc) => !streamingIds.includes(pc.id)
       );
 
+      // Reset classification state when removing datasets
       this.setState({
         pointClouds,
         activePointCloudId:
@@ -925,6 +941,8 @@ export class LidarControl implements IControl {
             : this._state.activePointCloudId,
         streamingActive: false,
         streamingProgress: undefined,
+        availableClassifications: new Set(),
+        hiddenClassifications: new Set(),
       });
 
       if (streamingIds.length > 0) {
