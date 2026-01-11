@@ -221,6 +221,10 @@ export interface LidarState {
     queueSize: number;
     isLoading: boolean;
   };
+  /** Set of classification codes that are currently hidden (toggled off) */
+  hiddenClassifications: Set<number>;
+  /** Set of classification codes present in loaded point cloud data */
+  availableClassifications: Set<number>;
 }
 
 /**

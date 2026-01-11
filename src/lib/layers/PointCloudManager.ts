@@ -60,6 +60,7 @@ export class PointCloudManager {
   addPointCloud(id: string, data: PointCloudData): void {
     const colors = this._colorProcessor.getColors(data, this._options.colorScheme, {
       usePercentile: this._options.usePercentile,
+      hiddenClassifications: this._options.hiddenClassifications,
     });
 
     // Use the coordinate origin from the data - positions are already stored as offsets
@@ -88,6 +89,7 @@ export class PointCloudManager {
       // Recalculate colors for new data
       const colors = this._colorProcessor.getColors(data, this._options.colorScheme, {
         usePercentile: this._options.usePercentile,
+        hiddenClassifications: this._options.hiddenClassifications,
       });
 
       this._pointClouds.set(id, {
@@ -172,14 +174,16 @@ export class PointCloudManager {
       options.colorScheme !== this._options.colorScheme;
     const percentileChanged = options.usePercentile !== undefined &&
       options.usePercentile !== this._options.usePercentile;
+    const hiddenClassificationsChanged = options.hiddenClassifications !== undefined;
 
     this._options = { ...this._options, ...options };
 
-    // If color scheme or percentile setting changed, recompute colors for all point clouds
-    if (colorSchemeChanged || percentileChanged) {
+    // If color scheme, percentile setting, or hidden classifications changed, recompute colors
+    if (colorSchemeChanged || percentileChanged || hiddenClassificationsChanged) {
       for (const [id, pc] of this._pointClouds) {
         const colors = this._colorProcessor.getColors(pc.data, this._options.colorScheme, {
           usePercentile: this._options.usePercentile,
+          hiddenClassifications: this._options.hiddenClassifications,
         });
         this._pointClouds.set(id, { ...pc, colors, coordinateOrigin: pc.coordinateOrigin });
       }
@@ -250,6 +254,15 @@ export class PointCloudManager {
    */
   setZOffset(offset: number): void {
     this.updateStyle({ zOffset: offset });
+  }
+
+  /**
+   * Sets the hidden classifications for filtering.
+   *
+   * @param hidden - Set of classification codes to hide
+   */
+  setHiddenClassifications(hidden: Set<number>): void {
+    this.updateStyle({ hiddenClassifications: hidden });
   }
 
   /**

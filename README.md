@@ -10,6 +10,7 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
 - **Dynamic COPC streaming** - viewport-based loading for large cloud-optimized point clouds
 - Multiple color schemes: elevation, intensity, classification, RGB
+- **Classification legend with toggle** - interactive legend to show/hide individual classification types
 - **Percentile-based coloring** - use 2-98% percentile range for better color distribution (clips outliers)
 - Interactive GUI control panel with scrollable content
 - **Point picking** - hover over points to see all available attributes (coordinates, elevation, intensity, classification, RGB, GPS time, return number, etc.)
@@ -199,6 +200,13 @@ getZOffset(): number
 setPickInfoFields(fields?: string[]): void
 getPickInfoFields(): string[] | undefined
 
+// Classification visibility (when using 'classification' color scheme)
+setClassificationVisibility(code: number, visible: boolean): void
+showAllClassifications(): void
+hideAllClassifications(): void
+getHiddenClassifications(): number[]
+getAvailableClassifications(): number[]
+
 // Panel control
 toggle(): void
 expand(): void
@@ -302,6 +310,57 @@ console.log(control.getZOffset()); // 50
 ```
 
 The Z offset can also be adjusted interactively via the "Z Offset" checkbox and slider in the GUI panel.
+
+### Classification Legend
+
+When using the "Classification" color scheme, an interactive legend appears showing all classification types found in the point cloud data. Each classification displays:
+
+- A color swatch matching the ASPRS standard colors
+- The classification name (Ground, Building, Vegetation, etc.)
+- A checkbox to toggle visibility
+
+**Features:**
+- **Show All / Hide All buttons** - Quickly toggle all classifications at once
+- **Individual toggles** - Show or hide specific classification types
+- **Auto-detection** - Classifications are automatically detected from loaded data
+- **Streaming support** - Classifications update as data streams in for COPC files
+
+```typescript
+// Via GUI: Select "Classification" from the Color By dropdown
+// The legend automatically appears with checkboxes for each class
+
+// Programmatically control visibility
+control.setColorScheme('classification');
+
+// Hide specific classifications (e.g., hide noise points)
+control.setClassificationVisibility(7, false);  // Hide "Low Point (Noise)"
+control.setClassificationVisibility(18, false); // Hide "High Noise"
+
+// Show only ground and buildings
+control.hideAllClassifications();
+control.setClassificationVisibility(2, true);  // Ground
+control.setClassificationVisibility(6, true);  // Building
+
+// Get available classifications in the data
+const available = control.getAvailableClassifications();
+console.log('Classifications:', available); // [2, 3, 4, 5, 6, ...]
+
+// Get currently hidden classifications
+const hidden = control.getHiddenClassifications();
+console.log('Hidden:', hidden); // [7, 18]
+```
+
+**ASPRS Classification Codes:**
+| Code | Name |
+|------|------|
+| 2 | Ground |
+| 3 | Low Vegetation |
+| 4 | Medium Vegetation |
+| 5 | High Vegetation |
+| 6 | Building |
+| 7 | Low Point (Noise) |
+| 9 | Water |
+| 17 | Bridge Deck |
 
 ### Dynamic COPC Streaming
 

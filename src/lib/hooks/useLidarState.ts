@@ -21,6 +21,8 @@ const DEFAULT_STATE: LidarState = {
   error: null,
   zOffsetEnabled: false,
   zOffset: 0,
+  hiddenClassifications: new Set(),
+  availableClassifications: new Set(),
 };
 
 /**

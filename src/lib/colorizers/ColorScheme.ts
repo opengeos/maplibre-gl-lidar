@@ -33,7 +33,7 @@ const INTENSITY_RAMP: ColorRamp = [
 /**
  * ASPRS LAS classification standard colors
  */
-const CLASSIFICATION_COLORS: ClassificationColorMap = {
+export const CLASSIFICATION_COLORS: ClassificationColorMap = {
   0: [128, 128, 128],   // Created, never classified
   1: [128, 128, 128],   // Unclassified
   2: [165, 113, 78],    // Ground (brown)
@@ -61,6 +61,8 @@ const CLASSIFICATION_COLORS: ClassificationColorMap = {
 export interface ColorOptions {
   /** Whether to use percentile range (2-98%) for elevation/intensity coloring */
   usePercentile?: boolean;
+  /** Set of classification codes to hide (set alpha to 0) */
+  hiddenClassifications?: Set<number>;
 }
 
 /**
@@ -86,7 +88,7 @@ export class ColorSchemeProcessor {
         case 'intensity':
           return this._colorByIntensity(data, colors, usePercentile);
         case 'classification':
-          return this._colorByClassification(data, colors);
+          return this._colorByClassification(data, colors, options.hiddenClassifications);
         case 'rgb':
           return this._colorByRGB(data, colors);
         default:
@@ -190,8 +192,16 @@ export class ColorSchemeProcessor {
 
   /**
    * Colors points by classification using ASPRS standard colors.
+   *
+   * @param data - Point cloud data
+   * @param colors - Output color array
+   * @param hiddenClassifications - Optional set of classification codes to hide (alpha=0)
    */
-  private _colorByClassification(data: PointCloudData, colors: Uint8Array): Uint8Array {
+  private _colorByClassification(
+    data: PointCloudData,
+    colors: Uint8Array,
+    hiddenClassifications?: Set<number>
+  ): Uint8Array {
     if (!data.hasClassification || !data.classifications) {
       // Fall back to elevation if no classification data
       return this._colorByElevation(data, colors, true);
@@ -203,7 +213,8 @@ export class ColorSchemeProcessor {
       colors[i * 4] = color[0];
       colors[i * 4 + 1] = color[1];
       colors[i * 4 + 2] = color[2];
-      colors[i * 4 + 3] = 255;
+      // Set alpha to 0 if classification is hidden, otherwise 255
+      colors[i * 4 + 3] = hiddenClassifications?.has(cls) ? 0 : 255;
     }
     return colors;
   }
@@ -290,4 +301,20 @@ export function getClassificationName(code: number): string {
     18: 'High Noise',
   };
   return names[code] || `Class ${code}`;
+}
+
+/**
+ * Extracts the set of unique classification codes present in the point cloud data.
+ *
+ * @param data - Point cloud data
+ * @returns Set of classification codes found in the data
+ */
+export function getAvailableClassifications(data: PointCloudData): Set<number> {
+  const classifications = new Set<number>();
+  if (data.hasClassification && data.classifications) {
+    for (let i = 0; i < data.pointCount; i++) {
+      classifications.add(data.classifications[i]);
+    }
+  }
+  return classifications;
 }

@@ -2,6 +2,7 @@ import type { LidarState, ColorScheme, PointCloudInfo } from '../core/types';
 import { FileInput } from './FileInput';
 import { RangeSlider } from './RangeSlider';
 import { DualRangeSlider } from './DualRangeSlider';
+import { ClassificationLegend } from './ClassificationLegend';
 import { formatNumber } from '../utils/helpers';
 
 /**
@@ -20,6 +21,9 @@ export interface PanelBuilderCallbacks {
   onZOffsetChange: (offset: number) => void;
   onUnload: (id: string) => void;
   onZoomTo: (id: string) => void;
+  onClassificationToggle: (classificationCode: number, visible: boolean) => void;
+  onClassificationShowAll: () => void;
+  onClassificationHideAll: () => void;
 }
 
 /**
@@ -48,6 +52,8 @@ export class PanelBuilder {
   private _zOffsetSliderContainer?: HTMLElement;
   private _loadingIndicator?: HTMLElement;
   private _errorMessage?: HTMLElement;
+  private _classificationLegend?: ClassificationLegend;
+  private _classificationLegendContainer?: HTMLElement;
 
   constructor(callbacks: PanelBuilderCallbacks, initialState: LidarState) {
     this._callbacks = callbacks;
@@ -164,6 +170,14 @@ export class PanelBuilder {
       if (!this._elevationCheckbox?.checked) {
         this._elevationSlider.setRange(bounds.min, bounds.max);
       }
+    }
+
+    // Update classification legend
+    if (this._classificationLegend && state.availableClassifications) {
+      this._classificationLegend.setClassifications(
+        Array.from(state.availableClassifications),
+        state.hiddenClassifications || new Set()
+      );
     }
 
     // Disable/enable inputs during loading
@@ -295,6 +309,9 @@ export class PanelBuilder {
     this._colorSelect = colorSelect;
     colorGroup.appendChild(colorSelect);
     section.appendChild(colorGroup);
+
+    // Classification legend (shown only when classification scheme is selected)
+    section.appendChild(this._buildClassificationLegend());
 
     // Percentile range option (only for elevation and intensity)
     section.appendChild(this._buildPercentileCheckbox());
@@ -544,14 +561,45 @@ export class PanelBuilder {
   }
 
   /**
-   * Updates the visibility of the percentile checkbox based on color scheme.
-   * Only shows for elevation and intensity color schemes.
+   * Updates the visibility of the percentile checkbox and classification legend based on color scheme.
+   * Percentile shows for elevation and intensity. Legend shows for classification.
    */
   private _updatePercentileVisibility(colorScheme: string): void {
     if (this._percentileGroup) {
       const showPercentile = colorScheme === 'elevation' || colorScheme === 'intensity';
       this._percentileGroup.style.display = showPercentile ? 'block' : 'none';
     }
+
+    // Show/hide classification legend
+    if (this._classificationLegendContainer) {
+      this._classificationLegendContainer.style.display =
+        colorScheme === 'classification' ? 'block' : 'none';
+    }
+  }
+
+  /**
+   * Builds the classification legend component.
+   */
+  private _buildClassificationLegend(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'lidar-control-group';
+    this._classificationLegendContainer = container;
+
+    // Set initial visibility based on current color scheme
+    const currentScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+    container.style.display = currentScheme === 'classification' ? 'block' : 'none';
+
+    // Create the legend component
+    this._classificationLegend = new ClassificationLegend({
+      classifications: Array.from(this._state.availableClassifications || new Set()),
+      hiddenClassifications: this._state.hiddenClassifications || new Set(),
+      onToggle: (code, visible) => this._callbacks.onClassificationToggle(code, visible),
+      onShowAll: () => this._callbacks.onClassificationShowAll(),
+      onHideAll: () => this._callbacks.onClassificationHideAll(),
+    });
+
+    container.appendChild(this._classificationLegend.render());
+    return container;
   }
 
   /**

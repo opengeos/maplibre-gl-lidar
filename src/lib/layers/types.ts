@@ -73,6 +73,11 @@ export interface PointCloudLayerOptions {
   zOffset: number;
 
   /**
+   * Set of classification codes to hide (only applies when colorScheme is 'classification')
+   */
+  hiddenClassifications?: Set<number>;
+
+  /**
    * Callback when a point is hovered (requires pickable: true)
    */
   onHover?: (info: PickedPointInfo | null) => void;
