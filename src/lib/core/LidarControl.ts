@@ -18,7 +18,7 @@ import { generateId, getFilename } from '../utils/helpers';
 /**
  * Default options for the LidarControl
  */
-const DEFAULT_OPTIONS: Required<LidarControlOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & Pick<LidarControlOptions, 'pickInfoFields'> = {
   collapsed: true,
   position: 'top-right',
   title: 'LiDAR Viewer',
@@ -31,6 +31,7 @@ const DEFAULT_OPTIONS: Required<LidarControlOptions> = {
   elevationRange: null,
   pickable: false,
   autoZoom: true,
+  pickInfoFields: undefined, // Show all fields by default
 };
 
 /**
@@ -59,7 +60,7 @@ export class LidarControl implements IControl {
   private _map?: MapLibreMap;
   private _container?: HTMLElement;
   private _panel?: HTMLElement;
-  private _options: Required<LidarControlOptions>;
+  private _options: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & Pick<LidarControlOptions, 'pickInfoFields'>;
   private _state: LidarState;
   private _eventHandlers: EventHandlersMap = new globalThis.Map();
 
@@ -90,6 +91,7 @@ export class LidarControl implements IControl {
       pickable: this._options.pickable,
       loading: false,
       error: null,
+      pickInfoFields: this._options.pickInfoFields,
     };
     this._loader = new PointCloudLoader();
   }
@@ -648,6 +650,100 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Formats a GPS time value (GPS Week Seconds) to a readable string.
+   */
+  private _formatGpsTime(gpsTime: number): string {
+    // GPS epoch is January 6, 1980
+    // GPS time is typically in seconds since GPS epoch or week seconds
+    // We'll detect based on magnitude
+    if (gpsTime > 1e9) {
+      // Likely GPS seconds since epoch - convert to date
+      const gpsEpoch = Date.UTC(1980, 0, 6, 0, 0, 0);
+      const leapSeconds = 18; // Current leap seconds offset (as of 2024)
+      const utcTime = gpsEpoch + (gpsTime - leapSeconds) * 1000;
+      const date = new Date(utcTime);
+      return date.toISOString().replace('T', ' ').slice(0, 19);
+    }
+    // Otherwise return as raw seconds (week seconds format)
+    return gpsTime.toFixed(6);
+  }
+
+  /**
+   * Formats a value for display in the tooltip.
+   */
+  private _formatAttributeValue(name: string, value: number): string {
+    // Special formatting for known attribute types
+    const lowerName = name.toLowerCase();
+
+    if (lowerName === 'gpstime') {
+      return this._formatGpsTime(value);
+    }
+    if (lowerName === 'intensity') {
+      // Intensity is already normalized to 0-1
+      return `${(value * 100).toFixed(1)}%`;
+    }
+    if (lowerName === 'classification') {
+      return this._getClassificationName(value);
+    }
+    if (lowerName.includes('angle')) {
+      return `${value.toFixed(1)}°`;
+    }
+    // Boolean-like flags
+    if (['synthetic', 'keypoint', 'withheld', 'overlap', 'edgeofflightline', 'scandirectionflag'].includes(lowerName)) {
+      return value === 0 ? '0' : '1';
+    }
+    // Integer values
+    if (Number.isInteger(value) || ['returnnumber', 'numberofreturns', 'pointsourceid', 'userdata', 'scannerchannel'].includes(lowerName)) {
+      return Math.round(value).toString();
+    }
+    // Default: decimal with appropriate precision
+    if (Math.abs(value) < 0.01 || Math.abs(value) > 100000) {
+      return value.toExponential(4);
+    }
+    return value.toFixed(2);
+  }
+
+  /**
+   * Gets the classification name for a code.
+   */
+  private _getClassificationName(code: number): string {
+    const classNames: Record<number, string> = {
+      0: 'Never Classified',
+      1: 'Unassigned',
+      2: 'Ground',
+      3: 'Low Vegetation',
+      4: 'Medium Vegetation',
+      5: 'High Vegetation',
+      6: 'Building',
+      7: 'Low Point',
+      8: 'Reserved',
+      9: 'Water',
+      10: 'Rail',
+      11: 'Road Surface',
+      12: 'Reserved',
+      13: 'Wire - Guard',
+      14: 'Wire - Conductor',
+      15: 'Transmission Tower',
+      16: 'Wire - Connector',
+      17: 'Bridge Deck',
+      18: 'High Noise',
+    };
+    return classNames[code] || `Class ${code}`;
+  }
+
+  /**
+   * Checks if an attribute should be shown based on pickInfoFields config.
+   */
+  private _shouldShowAttribute(name: string): boolean {
+    const fields = this._state.pickInfoFields;
+    if (!fields || fields.length === 0) {
+      return true; // Show all if not specified
+    }
+    // Case-insensitive match
+    return fields.some(f => f.toLowerCase() === name.toLowerCase());
+  }
+
+  /**
    * Handles point hover events from the point cloud layer.
    *
    * @param info - Picked point information or null if no point
@@ -656,43 +752,50 @@ export class LidarControl implements IControl {
     if (!this._tooltip) return;
 
     if (info && this._state.pickable) {
-      // Format classification name
-      const classNames: Record<number, string> = {
-        0: 'Never Classified',
-        1: 'Unassigned',
-        2: 'Ground',
-        3: 'Low Vegetation',
-        4: 'Medium Vegetation',
-        5: 'High Vegetation',
-        6: 'Building',
-        7: 'Low Point',
-        8: 'Reserved',
-        9: 'Water',
-        10: 'Rail',
-        11: 'Road Surface',
-        12: 'Reserved',
-        13: 'Wire - Guard',
-        14: 'Wire - Conductor',
-        15: 'Transmission Tower',
-        16: 'Wire - Connector',
-        17: 'Bridge Deck',
-        18: 'High Noise',
-      };
-
       let html = `
         <div style="margin-bottom: 4px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">Point Info</div>
-        <div>Lng: ${info.longitude.toFixed(6)}</div>
-        <div>Lat: ${info.latitude.toFixed(6)}</div>
-        <div>Elevation: ${info.elevation.toFixed(2)} m</div>
       `;
 
-      if (info.intensity !== undefined) {
-        html += `<div>Intensity: ${(info.intensity * 100).toFixed(1)}%</div>`;
+      // Core attributes (always available)
+      if (this._shouldShowAttribute('X') || this._shouldShowAttribute('Longitude')) {
+        html += `<div>X: ${info.longitude.toFixed(6)}</div>`;
+      }
+      if (this._shouldShowAttribute('Y') || this._shouldShowAttribute('Latitude')) {
+        html += `<div>Y: ${info.latitude.toFixed(6)}</div>`;
+      }
+      if (this._shouldShowAttribute('Z') || this._shouldShowAttribute('Elevation')) {
+        html += `<div>Z: ${info.elevation.toFixed(2)}</div>`;
       }
 
-      if (info.classification !== undefined) {
-        const className = classNames[info.classification] || `Class ${info.classification}`;
-        html += `<div>Class: ${className}</div>`;
+      // Intensity
+      if (info.intensity !== undefined && this._shouldShowAttribute('Intensity')) {
+        html += `<div>Intensity: ${this._formatAttributeValue('Intensity', info.intensity)}</div>`;
+      }
+
+      // Classification
+      if (info.classification !== undefined && this._shouldShowAttribute('Classification')) {
+        html += `<div>Classification: ${this._getClassificationName(info.classification)}</div>`;
+      }
+
+      // RGB colors
+      if (info.red !== undefined && this._shouldShowAttribute('Red')) {
+        html += `<div>Red: ${info.red}</div>`;
+      }
+      if (info.green !== undefined && this._shouldShowAttribute('Green')) {
+        html += `<div>Green: ${info.green}</div>`;
+      }
+      if (info.blue !== undefined && this._shouldShowAttribute('Blue')) {
+        html += `<div>Blue: ${info.blue}</div>`;
+      }
+
+      // All extra attributes
+      if (info.attributes) {
+        for (const [name, value] of Object.entries(info.attributes)) {
+          if (this._shouldShowAttribute(name)) {
+            const formattedValue = this._formatAttributeValue(name, value);
+            html += `<div>${name}: ${formattedValue}</div>`;
+          }
+        }
       }
 
       this._tooltip.innerHTML = html;
@@ -702,5 +805,22 @@ export class LidarControl implements IControl {
     } else {
       this._tooltip.style.display = 'none';
     }
+  }
+
+  /**
+   * Sets which fields to display in the pick point info panel.
+   *
+   * @param fields - Array of attribute names to show, or undefined/empty to show all
+   */
+  setPickInfoFields(fields?: string[]): void {
+    this._state.pickInfoFields = fields;
+    this._emit('statechange');
+  }
+
+  /**
+   * Gets the current list of fields shown in pick point info.
+   */
+  getPickInfoFields(): string[] | undefined {
+    return this._state.pickInfoFields;
   }
 }

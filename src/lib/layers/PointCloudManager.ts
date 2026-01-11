@@ -287,6 +287,26 @@ export class PointCloudManager {
             pointInfo.classification = data.classifications[originalIndex];
           }
 
+          // Add RGB colors if available
+          if (data.colors && data.hasRGB) {
+            pointInfo.red = data.colors[originalIndex * 4];
+            pointInfo.green = data.colors[originalIndex * 4 + 1];
+            pointInfo.blue = data.colors[originalIndex * 4 + 2];
+          }
+
+          // Add all extra attributes dynamically
+          if (data.extraAttributes) {
+            const attributes: Record<string, number> = {};
+            for (const [name, arr] of Object.entries(data.extraAttributes)) {
+              if (arr && originalIndex < arr.length) {
+                attributes[name] = arr[originalIndex];
+              }
+            }
+            if (Object.keys(attributes).length > 0) {
+              pointInfo.attributes = attributes;
+            }
+          }
+
           this._options.onHover(pointInfo);
         } else {
           this._options.onHover(null);

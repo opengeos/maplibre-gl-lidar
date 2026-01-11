@@ -16,6 +16,14 @@ export interface PickedPointInfo {
   intensity?: number;
   /** Classification code if available */
   classification?: number;
+  /** Red color component (0-255) if available */
+  red?: number;
+  /** Green color component (0-255) if available */
+  green?: number;
+  /** Blue color component (0-255) if available */
+  blue?: number;
+  /** Dynamic map of all extra attributes available for this point */
+  attributes?: Record<string, number>;
   /** Screen X coordinate */
   x: number;
   /** Screen Y coordinate */

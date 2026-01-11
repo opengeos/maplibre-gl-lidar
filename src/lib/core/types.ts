@@ -122,6 +122,14 @@ export interface LidarControlOptions {
    * @default true
    */
   autoZoom?: boolean;
+
+  /**
+   * List of attribute names to display in the pick point info panel.
+   * If not specified or empty, all available attributes will be shown.
+   * Example: ['GpsTime', 'ReturnNumber', 'Classification', 'Intensity']
+   * @default undefined (show all)
+   */
+  pickInfoFields?: string[];
 }
 
 /**
@@ -140,6 +148,8 @@ export interface LidarState {
   pickable: boolean;
   loading: boolean;
   error: string | null;
+  /** List of attribute names to show in pick info, or undefined to show all */
+  pickInfoFields?: string[];
 }
 
 /**
