@@ -112,6 +112,13 @@ export interface LidarControlOptions {
   colorScheme?: ColorScheme;
 
   /**
+   * Whether to use percentile range (2-98%) for elevation/intensity coloring.
+   * When true, outliers are clipped for better color distribution.
+   * @default true
+   */
+  usePercentile?: boolean;
+
+  /**
    * Maximum number of points to display
    * @default 1000000
    */
@@ -192,6 +199,8 @@ export interface LidarState {
   pointSize: number;
   opacity: number;
   colorScheme: ColorScheme;
+  /** Whether to use percentile range (2-98%) for elevation/intensity coloring */
+  usePercentile: boolean;
   elevationRange: [number, number] | null;
   pointBudget: number;
   pickable: boolean;

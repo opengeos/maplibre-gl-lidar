@@ -50,6 +50,12 @@ export interface PointCloudLayerOptions {
   colorScheme: ColorScheme;
 
   /**
+   * Whether to use percentile range (2-98%) for elevation/intensity coloring
+   * @default true
+   */
+  usePercentile: boolean;
+
+  /**
    * Elevation range filter [min, max] or null for no filter
    */
   elevationRange: [number, number] | null;

@@ -130,3 +130,78 @@ export function getFilename(path: string): string {
   const normalized = path.replace(/\\/g, '/');
   return normalized.split('/').pop()?.split('?')[0] || 'unknown';
 }
+
+/**
+ * Computes the percentile value of a Float32Array using the linear interpolation method.
+ * Uses sampling for large arrays to improve performance.
+ *
+ * @param arr - The Float32Array to compute the percentile from
+ * @param percentile - The percentile to compute (0-100)
+ * @param maxSamples - Maximum number of samples to use for large arrays (default: 100000)
+ * @returns The value at the given percentile
+ */
+export function computePercentile(
+  arr: Float32Array,
+  percentile: number,
+  maxSamples: number = 100000
+): number {
+  if (arr.length === 0) return 0;
+  if (arr.length === 1) return arr[0];
+
+  // Sample the array if it's too large
+  let values: number[];
+  if (arr.length > maxSamples) {
+    // Stratified sampling for better representation
+    const step = arr.length / maxSamples;
+    values = [];
+    for (let i = 0; i < maxSamples; i++) {
+      const idx = Math.floor(i * step);
+      values.push(arr[idx]);
+    }
+  } else {
+    values = Array.from(arr);
+  }
+
+  // Sort the sampled values
+  values.sort((a, b) => a - b);
+
+  // Compute the index for the percentile
+  const p = percentile / 100;
+  const index = p * (values.length - 1);
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+
+  if (lower === upper) {
+    return values[lower];
+  }
+
+  // Linear interpolation between the two closest values
+  const fraction = index - lower;
+  return values[lower] * (1 - fraction) + values[upper] * fraction;
+}
+
+/**
+ * Computes percentile bounds (e.g., 2nd and 98th percentile) for a Float32Array.
+ *
+ * @param arr - The Float32Array to compute bounds from
+ * @param lowerPercentile - Lower percentile (default: 2)
+ * @param upperPercentile - Upper percentile (default: 98)
+ * @returns Object with min and max values at the specified percentiles
+ */
+export function computePercentileBounds(
+  arr: Float32Array,
+  lowerPercentile: number = 2,
+  upperPercentile: number = 98
+): { min: number; max: number } {
+  if (arr.length === 0) return { min: 0, max: 1 };
+
+  const min = computePercentile(arr, lowerPercentile);
+  const max = computePercentile(arr, upperPercentile);
+
+  // Ensure we have a valid range
+  if (min === max) {
+    return { min: min - 0.5, max: max + 0.5 };
+  }
+
+  return { min, max };
+}

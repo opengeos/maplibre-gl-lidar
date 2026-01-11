@@ -1,6 +1,7 @@
 import type { PointCloudData } from '../loaders/types';
 import type { ColorScheme, ColorSchemeConfig } from '../core/types';
 import type { RGBColor, ColorRamp, ClassificationColorMap } from './types';
+import { computePercentileBounds } from '../utils/helpers';
 
 /**
  * Viridis-like elevation color ramp
@@ -55,6 +56,14 @@ const CLASSIFICATION_COLORS: ClassificationColorMap = {
 };
 
 /**
+ * Options for color generation
+ */
+export interface ColorOptions {
+  /** Whether to use percentile range (2-98%) for elevation/intensity coloring */
+  usePercentile?: boolean;
+}
+
+/**
  * Processes point cloud data into color arrays based on color scheme.
  */
 export class ColorSchemeProcessor {
@@ -63,23 +72,25 @@ export class ColorSchemeProcessor {
    *
    * @param data - Point cloud data
    * @param scheme - Color scheme to apply
+   * @param options - Optional color generation options
    * @returns Uint8Array of RGBA colors (length = pointCount * 4)
    */
-  getColors(data: PointCloudData, scheme: ColorScheme): Uint8Array {
+  getColors(data: PointCloudData, scheme: ColorScheme, options: ColorOptions = {}): Uint8Array {
     const colors = new Uint8Array(data.pointCount * 4);
+    const usePercentile = options.usePercentile ?? true;
 
     if (typeof scheme === 'string') {
       switch (scheme) {
         case 'elevation':
-          return this._colorByElevation(data, colors);
+          return this._colorByElevation(data, colors, usePercentile);
         case 'intensity':
-          return this._colorByIntensity(data, colors);
+          return this._colorByIntensity(data, colors, usePercentile);
         case 'classification':
           return this._colorByClassification(data, colors);
         case 'rgb':
           return this._colorByRGB(data, colors);
         default:
-          return this._colorByElevation(data, colors);
+          return this._colorByElevation(data, colors, usePercentile);
       }
     } else {
       return this._colorByCustom(data, colors, scheme);
@@ -87,18 +98,37 @@ export class ColorSchemeProcessor {
   }
 
   /**
-   * Colors points by elevation using viridis-like ramp.
+   * Colors points by elevation using terrain-like ramp.
+   *
+   * @param data - Point cloud data
+   * @param colors - Output color array
+   * @param usePercentile - Whether to use percentile bounds (2-98%) for better color distribution
    */
-  private _colorByElevation(data: PointCloudData, colors: Uint8Array): Uint8Array {
-    // Guard against undefined bounds
-    const minZ = data.bounds?.minZ ?? 0;
-    const maxZ = data.bounds?.maxZ ?? 1;
-    const range = maxZ - minZ || 1;
-
+  private _colorByElevation(data: PointCloudData, colors: Uint8Array, usePercentile: boolean): Uint8Array {
     // Guard against missing positions
     if (!data.positions || data.positions.length === 0) {
       return colors;
     }
+
+    let minZ: number;
+    let maxZ: number;
+
+    if (usePercentile) {
+      // Extract Z values for percentile calculation
+      const zValues = new Float32Array(data.pointCount);
+      for (let i = 0; i < data.pointCount; i++) {
+        zValues[i] = data.positions[i * 3 + 2] ?? 0;
+      }
+      const bounds = computePercentileBounds(zValues, 2, 98);
+      minZ = bounds.min;
+      maxZ = bounds.max;
+    } else {
+      // Use full range from bounds
+      minZ = data.bounds?.minZ ?? 0;
+      maxZ = data.bounds?.maxZ ?? 1;
+    }
+
+    const range = maxZ - minZ || 1;
 
     for (let i = 0; i < data.pointCount; i++) {
       const z = data.positions[i * 3 + 2] ?? 0;
@@ -114,20 +144,36 @@ export class ColorSchemeProcessor {
 
   /**
    * Colors points by intensity using grayscale ramp.
+   *
+   * @param data - Point cloud data
+   * @param colors - Output color array
+   * @param usePercentile - Whether to use percentile bounds (2-98%) for better color distribution
    */
-  private _colorByIntensity(data: PointCloudData, colors: Uint8Array): Uint8Array {
+  private _colorByIntensity(data: PointCloudData, colors: Uint8Array, usePercentile: boolean): Uint8Array {
     if (!data.hasIntensity || !data.intensities) {
       // Fall back to elevation if no intensity data
-      return this._colorByElevation(data, colors);
+      return this._colorByElevation(data, colors, usePercentile);
     }
 
-    // Find intensity range
-    let minI = Infinity, maxI = -Infinity;
-    for (let i = 0; i < data.pointCount; i++) {
-      const intensity = data.intensities[i];
-      if (intensity < minI) minI = intensity;
-      if (intensity > maxI) maxI = intensity;
+    let minI: number;
+    let maxI: number;
+
+    if (usePercentile) {
+      // Use percentile bounds for better color distribution
+      const bounds = computePercentileBounds(data.intensities, 2, 98);
+      minI = bounds.min;
+      maxI = bounds.max;
+    } else {
+      // Find full intensity range
+      minI = Infinity;
+      maxI = -Infinity;
+      for (let i = 0; i < data.pointCount; i++) {
+        const intensity = data.intensities[i];
+        if (intensity < minI) minI = intensity;
+        if (intensity > maxI) maxI = intensity;
+      }
     }
+
     const range = maxI - minI || 1;
 
     for (let i = 0; i < data.pointCount; i++) {
@@ -148,7 +194,7 @@ export class ColorSchemeProcessor {
   private _colorByClassification(data: PointCloudData, colors: Uint8Array): Uint8Array {
     if (!data.hasClassification || !data.classifications) {
       // Fall back to elevation if no classification data
-      return this._colorByElevation(data, colors);
+      return this._colorByElevation(data, colors, true);
     }
 
     for (let i = 0; i < data.pointCount; i++) {
@@ -168,7 +214,7 @@ export class ColorSchemeProcessor {
   private _colorByRGB(data: PointCloudData, colors: Uint8Array): Uint8Array {
     if (!data.hasRGB || !data.colors) {
       // Fall back to elevation if no RGB data
-      return this._colorByElevation(data, colors);
+      return this._colorByElevation(data, colors, true);
     }
 
     // data.colors is stored as RGBA (4 bytes per point)
@@ -191,7 +237,7 @@ export class ColorSchemeProcessor {
   ): Uint8Array {
     // For now, fall back to elevation for custom configs
     // This can be extended to support custom gradients
-    return this._colorByElevation(data, colors);
+    return this._colorByElevation(data, colors, true);
   }
 
   /**

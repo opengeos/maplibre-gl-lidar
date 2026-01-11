@@ -13,6 +13,7 @@ export interface PanelBuilderCallbacks {
   onPointSizeChange: (size: number) => void;
   onOpacityChange: (opacity: number) => void;
   onColorSchemeChange: (scheme: ColorScheme) => void;
+  onUsePercentileChange: (usePercentile: boolean) => void;
   onElevationRangeChange: (range: [number, number] | null) => void;
   onPickableChange: (pickable: boolean) => void;
   onZOffsetEnabledChange: (enabled: boolean) => void;
@@ -34,6 +35,8 @@ export class PanelBuilder {
   private _urlInput?: HTMLInputElement;
   private _loadButton?: HTMLButtonElement;
   private _colorSelect?: HTMLSelectElement;
+  private _percentileCheckbox?: HTMLInputElement;
+  private _percentileGroup?: HTMLElement;
   private _pointSizeSlider?: RangeSlider;
   private _opacitySlider?: RangeSlider;
   private _pointCloudsList?: HTMLElement;
@@ -129,6 +132,12 @@ export class PanelBuilder {
     // Update color scheme
     if (this._colorSelect && typeof state.colorScheme === 'string') {
       this._colorSelect.value = state.colorScheme;
+      this._updatePercentileVisibility(state.colorScheme);
+    }
+
+    // Update percentile checkbox
+    if (this._percentileCheckbox) {
+      this._percentileCheckbox.checked = state.usePercentile ?? true;
     }
 
     // Update pickable checkbox
@@ -280,10 +289,15 @@ export class PanelBuilder {
     colorSelect.value = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
     colorSelect.addEventListener('change', () => {
       this._callbacks.onColorSchemeChange(colorSelect.value as ColorScheme);
+      // Show/hide percentile option based on color scheme
+      this._updatePercentileVisibility(colorSelect.value);
     });
     this._colorSelect = colorSelect;
     colorGroup.appendChild(colorSelect);
     section.appendChild(colorGroup);
+
+    // Percentile range option (only for elevation and intensity)
+    section.appendChild(this._buildPercentileCheckbox());
 
     // Point size slider
     this._pointSizeSlider = new RangeSlider({
@@ -485,6 +499,59 @@ export class PanelBuilder {
     maxZ = Math.ceil(maxZ);
 
     return { min: minZ, max: maxZ };
+  }
+
+  /**
+   * Builds the percentile checkbox control for elevation/intensity coloring.
+   */
+  private _buildPercentileCheckbox(): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'lidar-control-group';
+    this._percentileGroup = group;
+
+    const labelRow = document.createElement('div');
+    labelRow.className = 'lidar-control-label-row';
+    labelRow.style.cursor = 'pointer';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'lidar-percentile-checkbox';
+    checkbox.checked = this._state.usePercentile ?? true;
+    checkbox.style.marginRight = '6px';
+    this._percentileCheckbox = checkbox;
+
+    const label = document.createElement('label');
+    label.className = 'lidar-control-label';
+    label.htmlFor = 'lidar-percentile-checkbox';
+    label.style.display = 'inline';
+    label.style.cursor = 'pointer';
+    label.textContent = 'Use percentile range (2-98%)';
+    label.title = 'Clip outliers for better color distribution';
+
+    checkbox.addEventListener('change', () => {
+      this._callbacks.onUsePercentileChange(checkbox.checked);
+    });
+
+    labelRow.appendChild(checkbox);
+    labelRow.appendChild(label);
+    group.appendChild(labelRow);
+
+    // Set initial visibility based on current color scheme
+    const currentScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+    this._updatePercentileVisibility(currentScheme);
+
+    return group;
+  }
+
+  /**
+   * Updates the visibility of the percentile checkbox based on color scheme.
+   * Only shows for elevation and intensity color schemes.
+   */
+  private _updatePercentileVisibility(colorScheme: string): void {
+    if (this._percentileGroup) {
+      const showPercentile = colorScheme === 'elevation' || colorScheme === 'intensity';
+      this._percentileGroup.style.display = showPercentile ? 'block' : 'none';
+    }
   }
 
   /**

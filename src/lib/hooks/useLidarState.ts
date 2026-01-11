@@ -13,6 +13,7 @@ const DEFAULT_STATE: LidarState = {
   pointSize: 2,
   opacity: 1.0,
   colorScheme: 'elevation',
+  usePercentile: true,
   elevationRange: null,
   pointBudget: 1000000,
   pickable: false,
@@ -98,6 +99,13 @@ export function useLidarState(initialState?: Partial<LidarState>) {
   }, []);
 
   /**
+   * Sets whether to use percentile range for coloring
+   */
+  const setUsePercentile = useCallback((usePercentile: boolean) => {
+    setState((prev) => ({ ...prev, usePercentile }));
+  }, []);
+
+  /**
    * Sets the elevation range filter
    */
   const setElevationRange = useCallback((elevationRange: [number, number] | null) => {
@@ -147,6 +155,7 @@ export function useLidarState(initialState?: Partial<LidarState>) {
     setPointSize,
     setOpacity,
     setColorScheme,
+    setUsePercentile,
     setElevationRange,
     setPointBudget,
     setZOffsetEnabled,

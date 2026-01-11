@@ -7,6 +7,7 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
 - **Dynamic COPC streaming** - viewport-based loading for large cloud-optimized point clouds
 - Multiple color schemes: elevation, intensity, classification, RGB
+- **Percentile-based coloring** - use 2-98% percentile range for better color distribution (clips outliers)
 - Interactive GUI control panel with scrollable content
 - **Point picking** - hover over points to see all available attributes (coordinates, elevation, intensity, classification, RGB, GPS time, return number, etc.)
 - **Z offset adjustment** - shift point clouds vertically for alignment
@@ -135,6 +136,7 @@ interface LidarControlOptions {
   pointSize?: number;         // Point size in pixels (default: 2)
   opacity?: number;           // Opacity 0-1 (default: 1.0)
   colorScheme?: ColorScheme;  // Color scheme (default: 'elevation')
+  usePercentile?: boolean;    // Use 2-98% percentile for coloring (default: true)
   pointBudget?: number;       // Max points to display (default: 1000000)
 
   // Filters and adjustments
@@ -172,6 +174,8 @@ flyToPointCloud(id?: string): void
 setPointSize(size: number): void
 setOpacity(opacity: number): void
 setColorScheme(scheme: ColorScheme): void
+setUsePercentile(usePercentile: boolean): void
+getUsePercentile(): boolean
 setElevationRange(min: number, max: number): void
 clearElevationRange(): void
 setPickable(pickable: boolean): void
@@ -220,6 +224,26 @@ getMap(): MapLibreMap | undefined
 - `'intensity'` - Grayscale based on intensity attribute
 - `'classification'` - ASPRS standard classification colors
 - `'rgb'` - Use embedded RGB colors (if available)
+
+### Percentile-Based Coloring
+
+By default, elevation and intensity coloring uses the 2nd-98th percentile range instead of the full min-max range. This clips outliers and provides better color distribution across the point cloud.
+
+```typescript
+// Percentile coloring is enabled by default
+const control = new LidarControl({
+  colorScheme: 'elevation',
+  usePercentile: true,  // default
+});
+
+// Disable to use full value range (min-max)
+control.setUsePercentile(false);
+
+// Check current setting
+console.log(control.getUsePercentile()); // true or false
+```
+
+The percentile toggle is also available in the GUI panel when using "Elevation" or "Intensity" color schemes. Uncheck "Use percentile range (2-98%)" to use the full value range.
 
 ### Point Picking
 
@@ -318,6 +342,7 @@ const {
   setPointSize,
   setOpacity,
   setColorScheme,
+  setUsePercentile,
   setElevationRange,
   setZOffsetEnabled,
   setZOffset,

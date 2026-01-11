@@ -34,6 +34,7 @@ export class PointCloudManager {
       pointSize: options.pointSize ?? 2,
       opacity: options.opacity ?? 1.0,
       colorScheme: options.colorScheme ?? 'elevation',
+      usePercentile: options.usePercentile ?? true,
       elevationRange: options.elevationRange ?? null,
       pickable: options.pickable ?? false,
       zOffset: options.zOffset ?? 0,
@@ -57,7 +58,9 @@ export class PointCloudManager {
    * @param data - Point cloud data (positions are already offsets from coordinateOrigin)
    */
   addPointCloud(id: string, data: PointCloudData): void {
-    const colors = this._colorProcessor.getColors(data, this._options.colorScheme);
+    const colors = this._colorProcessor.getColors(data, this._options.colorScheme, {
+      usePercentile: this._options.usePercentile,
+    });
 
     // Use the coordinate origin from the data - positions are already stored as offsets
     const coordinateOrigin = data.coordinateOrigin;
@@ -83,7 +86,9 @@ export class PointCloudManager {
 
     if (existing) {
       // Recalculate colors for new data
-      const colors = this._colorProcessor.getColors(data, this._options.colorScheme);
+      const colors = this._colorProcessor.getColors(data, this._options.colorScheme, {
+        usePercentile: this._options.usePercentile,
+      });
 
       this._pointClouds.set(id, {
         id,
@@ -165,13 +170,17 @@ export class PointCloudManager {
   updateStyle(options: Partial<PointCloudLayerOptions>): void {
     const colorSchemeChanged = options.colorScheme !== undefined &&
       options.colorScheme !== this._options.colorScheme;
+    const percentileChanged = options.usePercentile !== undefined &&
+      options.usePercentile !== this._options.usePercentile;
 
     this._options = { ...this._options, ...options };
 
-    // If color scheme changed, recompute colors for all point clouds
-    if (colorSchemeChanged) {
+    // If color scheme or percentile setting changed, recompute colors for all point clouds
+    if (colorSchemeChanged || percentileChanged) {
       for (const [id, pc] of this._pointClouds) {
-        const colors = this._colorProcessor.getColors(pc.data, this._options.colorScheme);
+        const colors = this._colorProcessor.getColors(pc.data, this._options.colorScheme, {
+          usePercentile: this._options.usePercentile,
+        });
         this._pointClouds.set(id, { ...pc, colors, coordinateOrigin: pc.coordinateOrigin });
       }
     }
@@ -205,6 +214,15 @@ export class PointCloudManager {
    */
   setColorScheme(scheme: ColorScheme): void {
     this.updateStyle({ colorScheme: scheme });
+  }
+
+  /**
+   * Sets whether to use percentile range for elevation/intensity coloring.
+   *
+   * @param usePercentile - Whether to use percentile range (2-98%)
+   */
+  setUsePercentile(usePercentile: boolean): void {
+    this.updateStyle({ usePercentile });
   }
 
   /**

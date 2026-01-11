@@ -32,6 +32,7 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   pointSize: 2,
   opacity: 1.0,
   colorScheme: 'elevation',
+  usePercentile: true,
   pointBudget: 1000000,
   elevationRange: null,
   pickable: false,
@@ -103,6 +104,7 @@ export class LidarControl implements IControl {
       pointSize: this._options.pointSize,
       opacity: this._options.opacity,
       colorScheme: this._options.colorScheme,
+      usePercentile: this._options.usePercentile,
       elevationRange: this._options.elevationRange,
       pointBudget: this._options.pointBudget,
       pickable: this._options.pickable,
@@ -133,6 +135,7 @@ export class LidarControl implements IControl {
       pointSize: this._state.pointSize,
       opacity: this._state.opacity,
       colorScheme: this._state.colorScheme,
+      usePercentile: this._state.usePercentile,
       elevationRange: this._state.elevationRange,
       pickable: this._state.pickable,
       zOffset: this._state.zOffset,
@@ -895,6 +898,27 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Sets whether to use percentile range for elevation/intensity coloring.
+   *
+   * @param usePercentile - Whether to use percentile range (2-98%)
+   */
+  setUsePercentile(usePercentile: boolean): void {
+    this._state.usePercentile = usePercentile;
+    this._pointCloudManager?.setUsePercentile(usePercentile);
+    this._emit('stylechange');
+    this._emit('statechange');
+  }
+
+  /**
+   * Gets whether percentile range is being used for coloring.
+   *
+   * @returns True if using percentile range
+   */
+  getUsePercentile(): boolean {
+    return this._state.usePercentile;
+  }
+
+  /**
    * Sets the elevation range filter.
    *
    * @param min - Minimum elevation
@@ -1121,6 +1145,7 @@ export class LidarControl implements IControl {
         onPointSizeChange: (size) => this.setPointSize(size),
         onOpacityChange: (opacity) => this.setOpacity(opacity),
         onColorSchemeChange: (scheme) => this.setColorScheme(scheme),
+        onUsePercentileChange: (usePercentile) => this.setUsePercentile(usePercentile),
         onElevationRangeChange: (range) => {
           if (range) {
             this.setElevationRange(range[0], range[1]);
