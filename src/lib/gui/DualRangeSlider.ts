@@ -20,7 +20,6 @@ export class DualRangeSlider {
   private _sliderLow?: HTMLInputElement;
   private _sliderHigh?: HTMLInputElement;
   private _valueDisplay?: HTMLElement;
-  private _container?: HTMLElement;
 
   constructor(options: DualRangeSliderOptions) {
     this._options = options;
@@ -34,7 +33,6 @@ export class DualRangeSlider {
   render(): HTMLElement {
     const group = document.createElement('div');
     group.className = 'lidar-control-group';
-    this._container = group;
 
     const labelRow = document.createElement('div');
     labelRow.className = 'lidar-control-label-row';
