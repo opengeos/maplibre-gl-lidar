@@ -1497,8 +1497,14 @@ export class LidarControl implements IControl {
 
       this._tooltip.innerHTML = html;
       this._tooltip.style.display = 'block';
-      this._tooltip.style.left = `${info.x + 15}px`;
-      this._tooltip.style.top = `${info.y + 15}px`;
+
+      // Get map container offset for correct positioning in embedded contexts (Jupyter, iframes)
+      const containerRect = this._mapContainer?.getBoundingClientRect();
+      const offsetX = containerRect?.left ?? 0;
+      const offsetY = containerRect?.top ?? 0;
+
+      this._tooltip.style.left = `${info.x + offsetX + 15}px`;
+      this._tooltip.style.top = `${info.y + offsetY + 15}px`;
     } else {
       this._tooltip.style.display = 'none';
     }
