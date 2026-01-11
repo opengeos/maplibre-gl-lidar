@@ -28,6 +28,16 @@ Try the [live demo](https://opengeos.org/maplibre-gl-lidar).
 
 ![](https://github.com/user-attachments/assets/db03b60d-918d-438d-9f3f-1f922b1a0a2b)
 
+## Online Viewer
+
+Use the [Online Viewer](https://opengeos.org/maplibre-gl-lidar/viewer/) to load and visualize any COPC point cloud by entering a URL. You can also use URL parameters for direct linking:
+
+```
+https://opengeos.org/maplibre-gl-lidar/viewer/?url=https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz
+```
+
+This allows you to share links that automatically load specific point clouds.
+
 ## Installation
 
 ```bash

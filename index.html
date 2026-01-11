@@ -19,7 +19,7 @@
     }
 
     .container {
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
     }
 
@@ -59,6 +59,25 @@
       box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
     }
 
+    .example-card.featured {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, #0d4f5e 0%, #1a5f7a 100%);
+      color: white;
+    }
+
+    .example-card.featured h2 {
+      color: white;
+    }
+
+    .example-card.featured p {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .example-card.featured .tag {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
     .example-card h2 {
       color: #333;
       margin-bottom: 8px;
@@ -91,6 +110,7 @@
     .tag.react { background: #e1f5fe; color: #0277bd; }
     .tag.typescript { background: #e3f2fd; color: #1565c0; }
     .tag.lidar { background: #e8f5e9; color: #2e7d32; }
+    .tag.viewer { background: #fce4ec; color: #c2185b; }
 
     .footer {
       text-align: center;
@@ -115,6 +135,15 @@
     <p class="subtitle">A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl</p>
 
     <div class="examples-grid">
+      <a href="./viewer/index.html" class="example-card featured">
+        <h2>Online Viewer</h2>
+        <p>Load and visualize any COPC point cloud by entering a URL. Supports URL parameters for direct linking.</p>
+        <div class="tags">
+          <span class="tag viewer">Viewer</span>
+          <span class="tag lidar">COPC</span>
+        </div>
+      </a>
+
       <a href="./examples/basic/index.html" class="example-card">
         <h2>Basic Example</h2>
         <p>Simple vanilla TypeScript example showing how to load and visualize LiDAR point clouds with the GUI control.</p>

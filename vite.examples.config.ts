@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        viewer: resolve(__dirname, 'viewer/index.html'),
         basic: resolve(__dirname, 'examples/basic/index.html'),
         react: resolve(__dirname, 'examples/react/index.html'),
       },
