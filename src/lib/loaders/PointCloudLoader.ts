@@ -2,8 +2,70 @@ import { Copc, Hierarchy, Getter } from 'copc';
 import type { Copc as CopcType } from 'copc';
 import { createLazPerf, type LazPerf } from 'laz-perf';
 import proj4 from 'proj4';
-import type { PointCloudData } from './types';
+import type { PointCloudData, ExtraPointAttributes, AttributeArray } from './types';
 import type { PointCloudBounds } from '../core/types';
+
+/**
+ * Configuration for attribute storage types
+ */
+interface AttributeConfig {
+  arrayType: 'float64' | 'float32' | 'uint32' | 'uint16' | 'uint8' | 'int32' | 'int16' | 'int8';
+  scale?: number; // Optional scale factor to apply when reading
+}
+
+/**
+ * Known LAS dimension configurations
+ * Maps dimension names to their optimal storage types
+ */
+const DIMENSION_CONFIGS: Record<string, AttributeConfig> = {
+  // Standard LAS dimensions
+  'GpsTime': { arrayType: 'float64' },
+  'ReturnNumber': { arrayType: 'uint8' },
+  'NumberOfReturns': { arrayType: 'uint8' },
+  'ScanDirectionFlag': { arrayType: 'uint8' },
+  'EdgeOfFlightLine': { arrayType: 'uint8' },
+  'ScanAngleRank': { arrayType: 'int8' },
+  'ScanAngle': { arrayType: 'float32' },
+  'UserData': { arrayType: 'uint8' },
+  'PointSourceId': { arrayType: 'uint16' },
+  // LAS 1.4 dimensions
+  'ScannerChannel': { arrayType: 'uint8' },
+  'Synthetic': { arrayType: 'uint8' },
+  'KeyPoint': { arrayType: 'uint8' },
+  'Withheld': { arrayType: 'uint8' },
+  'Overlap': { arrayType: 'uint8' },
+  'ClassFlags': { arrayType: 'uint8' },
+  // NIR if available
+  'Nir': { arrayType: 'uint16' },
+  'NearInfrared': { arrayType: 'uint16' },
+};
+
+/**
+ * Core dimensions that are handled separately (not as extra attributes)
+ */
+const CORE_DIMENSIONS = new Set([
+  'X', 'Y', 'Z',
+  'Intensity',
+  'Classification',
+  'Red', 'Green', 'Blue',
+]);
+
+/**
+ * Creates a typed array of the appropriate type for an attribute
+ */
+function createAttributeArray(type: AttributeConfig['arrayType'], length: number): AttributeArray {
+  switch (type) {
+    case 'float64': return new Float64Array(length);
+    case 'float32': return new Float32Array(length);
+    case 'uint32': return new Uint32Array(length);
+    case 'uint16': return new Uint16Array(length);
+    case 'uint8': return new Uint8Array(length);
+    case 'int32': return new Int32Array(length);
+    case 'int16': return new Int16Array(length);
+    case 'int8': return new Int8Array(length);
+    default: return new Float32Array(length);
+  }
+}
 
 // LazPerf instance for COPC decompression
 let lazPerfInstance: LazPerf | null = null;
@@ -351,6 +413,13 @@ export class PointCloudLoader {
       colors = new Uint8Array(totalPoints * 4);
     }
 
+    // Extra attributes will be populated dynamically based on available dimensions
+    const extraAttributes: ExtraPointAttributes = {};
+    // Track which dimensions we've detected as available
+    const availableDimensions: Set<string> = new Set();
+    // First pass flag - we'll detect dimensions on first node
+    let dimensionsDetected = false;
+
     let pointIndex = 0;
     let lastYieldTime = Date.now();
     const YIELD_INTERVAL_MS = 50; // Yield every 50ms to keep UI responsive
@@ -367,7 +436,22 @@ export class PointCloudLoader {
       try {
         const view = await Copc.loadPointDataView(source, copc, node, { lazPerf });
 
-        // Get dimensions
+        // On first node, detect all available dimensions
+        if (!dimensionsDetected) {
+          // Get all dimension names from the view
+          const allDimensions = Object.keys(view.dimensions || {});
+          for (const dimName of allDimensions) {
+            if (!CORE_DIMENSIONS.has(dimName)) {
+              availableDimensions.add(dimName);
+              // Allocate array for this dimension
+              const config = DIMENSION_CONFIGS[dimName] || { arrayType: 'float32' };
+              extraAttributes[dimName] = createAttributeArray(config.arrayType, totalPoints);
+            }
+          }
+          dimensionsDetected = true;
+        }
+
+        // Get dimensions - core attributes
         const xGetter = view.getter('X');
         const yGetter = view.getter('Y');
         const zGetter = view.getter('Z');
@@ -376,6 +460,19 @@ export class PointCloudLoader {
         const redGetter = hasColor ? view.getter('Red') : null;
         const greenGetter = hasColor ? view.getter('Green') : null;
         const blueGetter = hasColor ? view.getter('Blue') : null;
+
+        // Build getters for all available extra dimensions
+        const extraGetters: Map<string, (i: number) => number> = new Map();
+        for (const dimName of availableDimensions) {
+          try {
+            const getter = view.getter(dimName);
+            if (getter) {
+              extraGetters.set(dimName, getter);
+            }
+          } catch {
+            // Dimension not available in this node, skip
+          }
+        }
 
         for (let i = 0; i < node.pointCount; i++) {
           // copc.js getters already return scaled/offset coordinates, NOT raw integers
@@ -412,6 +509,14 @@ export class PointCloudLoader {
             colors[pointIndex * 4 + 3] = 255;
           }
 
+          // Extra attributes - dynamically loaded based on available dimensions
+          for (const [dimName, getter] of extraGetters) {
+            const arr = extraAttributes[dimName];
+            if (arr) {
+              arr[pointIndex] = getter(i);
+            }
+          }
+
           pointIndex++;
 
           // Periodically yield to the UI thread
@@ -430,12 +535,19 @@ export class PointCloudLoader {
 
     this._reportProgress(92, 'Processing complete, preparing visualization...');
 
+    // Trim extra attributes arrays to actual point count
+    const trimmedExtraAttributes: ExtraPointAttributes = {};
+    for (const [name, arr] of Object.entries(extraAttributes)) {
+      trimmedExtraAttributes[name] = arr.subarray(0, pointIndex) as AttributeArray;
+    }
+
     return {
       positions: positions.subarray(0, pointIndex * 3),
       coordinateOrigin,
       colors: colors?.subarray(0, pointIndex * 4),
       intensities: intensities.subarray(0, pointIndex),
       classifications: classifications.subarray(0, pointIndex),
+      extraAttributes: Object.keys(trimmedExtraAttributes).length > 0 ? trimmedExtraAttributes : undefined,
       pointCount: pointIndex,
       bounds,
       hasRGB: !!colors,

@@ -165,10 +165,11 @@ export class ColorSchemeProcessor {
       return this._colorByElevation(data, colors);
     }
 
+    // data.colors is stored as RGBA (4 bytes per point)
     for (let i = 0; i < data.pointCount; i++) {
-      colors[i * 4] = data.colors[i * 3];
-      colors[i * 4 + 1] = data.colors[i * 3 + 1];
-      colors[i * 4 + 2] = data.colors[i * 3 + 2];
+      colors[i * 4] = data.colors[i * 4];
+      colors[i * 4 + 1] = data.colors[i * 4 + 1];
+      colors[i * 4 + 2] = data.colors[i * 4 + 2];
       colors[i * 4 + 3] = 255;
     }
     return colors;

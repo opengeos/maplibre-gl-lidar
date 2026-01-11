@@ -1,6 +1,17 @@
 import type { PointCloudBounds } from '../core/types';
 
 /**
+ * Generic typed array for point attribute storage
+ */
+export type AttributeArray = Float64Array | Float32Array | Uint32Array | Uint16Array | Uint8Array | Int32Array | Int16Array | Int8Array;
+
+/**
+ * Extra point attributes loaded from LAS/COPC files
+ * Uses a dynamic map to store any available attributes
+ */
+export type ExtraPointAttributes = Record<string, AttributeArray>;
+
+/**
  * Normalized point cloud data structure
  */
 export interface PointCloudData {
@@ -30,6 +41,11 @@ export interface PointCloudData {
    * Optional Uint8Array of classification values (length = pointCount)
    */
   classifications?: Uint8Array;
+
+  /**
+   * Extra point attributes (GpsTime, ReturnNumber, etc.)
+   */
+  extraAttributes?: ExtraPointAttributes;
 
   /**
    * Number of points in the cloud
