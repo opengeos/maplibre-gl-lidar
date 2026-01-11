@@ -590,7 +590,7 @@
   padding: 4px 8px;
   font-size: 10px;
   font-weight: 500;
-  background: #159895;
+  background-color: #159895;
   border: 1px solid #128583;
   border-radius: 3px;
   cursor: pointer;
@@ -598,9 +598,24 @@
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.lidar-legend-action-btn:hover {
-  background: #128583;
-  border-color: #0f6d6b;
+.lidar-control-panel .lidar-legend-action-btn {
+  background-color: #159895;
+  border: 1px solid #128583;
+  color: #fff;
+}
+
+.lidar-legend-action-btn:hover,
+.lidar-legend-action-btn:focus-visible {
+  background-color: #0f6d6b;
+  border-color: #0b5b59;
+  color: #fff;
+}
+
+.lidar-control-panel .lidar-classification-legend-header button.lidar-legend-action-btn:hover,
+.lidar-control-panel .lidar-classification-legend-header button.lidar-legend-action-btn:focus-visible {
+  background-color: #0f6d6b;
+  border-color: #0b5b59;
+  color: #fff;
 }
 
 .lidar-classification-legend-list {
