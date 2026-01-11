@@ -5,6 +5,7 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 ## Features
 
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
+- **Dynamic COPC streaming** - viewport-based loading for large cloud-optimized point clouds
 - Multiple color schemes: elevation, intensity, classification, RGB
 - Interactive GUI control panel with scrollable content
 - **Point picking** - hover over points to see all available attributes (coordinates, elevation, intensity, classification, RGB, GPS time, return number, etc.)
@@ -147,6 +148,12 @@ interface LidarControlOptions {
 
   // Behavior
   autoZoom?: boolean;         // Auto zoom to data after loading (default: true)
+
+  // COPC Streaming (dynamic loading)
+  copcLoadingMode?: 'full' | 'dynamic';  // Loading mode for COPC files (default: 'dynamic')
+  streamingPointBudget?: number;         // Max points for streaming (default: 5000000)
+  streamingMaxConcurrentRequests?: number; // Concurrent node requests (default: 4)
+  streamingViewportDebounceMs?: number;  // Viewport change debounce (default: 150)
 }
 ```
 
@@ -154,7 +161,9 @@ interface LidarControlOptions {
 
 ```typescript
 // Loading
-loadPointCloud(source: string | File | ArrayBuffer): Promise<PointCloudInfo>
+loadPointCloud(source: string | File | ArrayBuffer, options?: { loadingMode?: 'full' | 'dynamic' }): Promise<PointCloudInfo>
+loadPointCloudStreaming(source: string | File | ArrayBuffer, options?: StreamingLoaderOptions): Promise<PointCloudInfo>
+stopStreaming(): void  // Stop dynamic loading and clean up
 unloadPointCloud(id?: string): void
 getPointClouds(): PointCloudInfo[]
 flyToPointCloud(id?: string): void
@@ -200,6 +209,10 @@ getMap(): MapLibreMap | undefined
 - `stylechange` - Styling changed
 - `collapse` - Panel collapsed
 - `expand` - Panel expanded
+- `streamingstart` - Dynamic streaming started
+- `streamingstop` - Dynamic streaming stopped
+- `streamingprogress` - Streaming progress update
+- `budgetreached` - Point budget limit reached
 
 ### Color Schemes
 
@@ -256,6 +269,44 @@ console.log(control.getZOffset()); // 50
 
 The Z offset can also be adjusted interactively via the "Z Offset" checkbox and slider in the GUI panel.
 
+### Dynamic COPC Streaming
+
+For large COPC (Cloud Optimized Point Cloud) files, dynamic streaming loads only the points visible in the current viewport, dramatically reducing initial load time and memory usage.
+
+**Key features:**
+- **Viewport-based loading** - Only loads octree nodes visible in the current map view
+- **Level-of-detail (LOD)** - Automatically selects appropriate detail level based on zoom
+- **Center-first priority** - Points near the viewport center load first
+- **Point budget** - Limits total points in memory (default: 5 million)
+
+**How it works:**
+1. When loading a COPC file (from URL or local file), dynamic mode is used by default
+2. As you pan/zoom the map, new nodes are streamed based on viewport
+3. Deeper octree levels (more detail) load as you zoom in
+4. Parent nodes provide coverage where child nodes don't exist
+
+```typescript
+// Dynamic loading is the default for COPC files
+const control = new LidarControl();
+control.loadPointCloud('https://example.com/large-pointcloud.copc.laz');
+
+// Explicitly set loading mode
+const control = new LidarControl({
+  copcLoadingMode: 'dynamic',  // or 'full' for complete load
+  streamingPointBudget: 10_000_000,  // 10 million points max
+});
+
+// Override per-load
+control.loadPointCloud(file, { loadingMode: 'full' });  // Force full load
+control.loadPointCloud(url, { loadingMode: 'dynamic' }); // Force streaming
+```
+
+**Loading modes:**
+- `'dynamic'` (default for COPC) - Stream nodes based on viewport, ideal for large files
+- `'full'` - Load entire point cloud upfront, better for small files
+
+**Note:** Non-COPC files (regular LAS/LAZ) always use full loading mode since they don't have the octree structure required for streaming.
+
 ### React Hooks
 
 #### useLidarState
@@ -289,7 +340,7 @@ console.log(`Loaded ${data.pointCount} points`);
 
 - LAS 1.0 - 1.4
 - LAZ (compressed LAS)
-- COPC (Cloud Optimized Point Cloud)
+- COPC (Cloud Optimized Point Cloud) - with dynamic streaming support
 
 ## Coordinate Systems
 

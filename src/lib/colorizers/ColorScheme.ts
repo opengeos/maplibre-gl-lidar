@@ -90,12 +90,18 @@ export class ColorSchemeProcessor {
    * Colors points by elevation using viridis-like ramp.
    */
   private _colorByElevation(data: PointCloudData, colors: Uint8Array): Uint8Array {
-    const minZ = data.bounds.minZ;
-    const maxZ = data.bounds.maxZ;
+    // Guard against undefined bounds
+    const minZ = data.bounds?.minZ ?? 0;
+    const maxZ = data.bounds?.maxZ ?? 1;
     const range = maxZ - minZ || 1;
 
+    // Guard against missing positions
+    if (!data.positions || data.positions.length === 0) {
+      return colors;
+    }
+
     for (let i = 0; i < data.pointCount; i++) {
-      const z = data.positions[i * 3 + 2];
+      const z = data.positions[i * 3 + 2] ?? 0;
       const t = (z - minZ) / range;
       const color = this._interpolateRamp(ELEVATION_RAMP, t);
       colors[i * 4] = color[0];
@@ -192,6 +198,11 @@ export class ColorSchemeProcessor {
    * Interpolates a color from a color ramp.
    */
   private _interpolateRamp(ramp: ColorRamp, t: number): RGBColor {
+    // Handle NaN or invalid t values
+    if (!Number.isFinite(t)) {
+      return ramp[0];
+    }
+
     const clampedT = Math.max(0, Math.min(1, t));
     const idx = Math.min(
       Math.floor(clampedT * (ramp.length - 1)),

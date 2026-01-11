@@ -21,11 +21,14 @@ export type StreamingSource = string | File | ArrayBuffer;
 
 /**
  * Creates a getter function from an ArrayBuffer for copc.js
+ * Uses subarray for better performance (no copy, just a view)
  */
 function createBufferGetter(buffer: ArrayBuffer): Getter {
   const uint8 = new Uint8Array(buffer);
   return async (begin: number, end: number): Promise<Uint8Array> => {
-    return uint8.slice(begin, end);
+    // Use subarray for performance - creates a view without copying
+    // Then create a copy since copc.js might modify the data
+    return new Uint8Array(uint8.subarray(begin, end));
   };
 }
 
@@ -444,6 +447,7 @@ export class CopcStreamingLoader {
 
   /**
    * Checks if a node's bounds intersect the viewport.
+   * Adds a buffer around viewport to catch edge/corner nodes.
    *
    * @param nodeBounds - Node bounds in WGS84
    * @param viewport - Current viewport info
@@ -455,11 +459,25 @@ export class CopcStreamingLoader {
   ): boolean {
     const [west, south, east, north] = viewport.bounds;
 
+    // Add 20% buffer around viewport to catch edge/corner nodes
+    // This helps with:
+    // 1. Tilted views where getBounds() underestimates visible area
+    // 2. Nodes at the edge that might be partially visible
+    const width = east - west;
+    const height = north - south;
+    const bufferX = width * 0.2;
+    const bufferY = height * 0.2;
+
+    const bufferedWest = west - bufferX;
+    const bufferedEast = east + bufferX;
+    const bufferedSouth = south - bufferY;
+    const bufferedNorth = north + bufferY;
+
     return !(
-      nodeBounds.maxX < west ||
-      nodeBounds.minX > east ||
-      nodeBounds.maxY < south ||
-      nodeBounds.minY > north
+      nodeBounds.maxX < bufferedWest ||
+      nodeBounds.minX > bufferedEast ||
+      nodeBounds.maxY < bufferedSouth ||
+      nodeBounds.minY > bufferedNorth
     );
   }
 
@@ -541,6 +559,8 @@ export class CopcStreamingLoader {
   /**
    * Finds nodes that intersect the viewport and should be loaded.
    * Implements center-first priority and LOD selection.
+   * Loads nodes at ALL depths up to targetDepth to ensure full coverage
+   * (parent nodes fill gaps where child nodes don't exist in sparse octrees).
    *
    * @param viewport - Current viewport information
    * @returns Sorted array of nodes to load (by priority)
@@ -556,11 +576,12 @@ export class CopcStreamingLoader {
     const nodesToLoad: CachedNode[] = [];
     const targetDepth = viewport.targetDepth;
 
-    // Traverse all cached nodes and select appropriate ones
+    // Load ALL nodes that intersect viewport, from depth 0 up to targetDepth + 1
+    // This ensures parent nodes provide coverage where child nodes don't exist
     for (const [, node] of this._nodeCache) {
       const depth = node.keyArray[0];
 
-      // Only consider nodes at or near target depth
+      // Skip nodes deeper than we need
       if (depth > targetDepth + 1) continue;
 
       // Check viewport intersection
@@ -568,16 +589,18 @@ export class CopcStreamingLoader {
         continue;
       }
 
-      // If at target depth, add to load list
-      if (depth === targetDepth || depth === targetDepth + 1) {
-        if (node.state !== 'loaded' && node.state !== 'loading') {
-          node.priority = this._calculateNodePriority(node.boundsWgs84, viewport);
-          nodesToLoad.push(node);
-        }
+      // Add to load list if not already loaded/loading
+      if (node.state !== 'loaded' && node.state !== 'loading') {
+        // Calculate priority: distance from center, with depth bonus
+        // Deeper nodes (more detail) get slightly higher priority
+        const distPriority = this._calculateNodePriority(node.boundsWgs84, viewport);
+        // Normalize depth bonus: deeper = lower priority number = higher priority
+        node.priority = distPriority - (depth * 0.0001);
+        nodesToLoad.push(node);
       }
     }
 
-    // Sort by distance from viewport center (center-first priority)
+    // Sort by priority (center-first, deeper nodes slightly preferred)
     nodesToLoad.sort((a, b) => (a.priority || Infinity) - (b.priority || Infinity));
 
     return nodesToLoad;
@@ -633,6 +656,12 @@ export class CopcStreamingLoader {
     node.state = 'loading';
     this._activeRequests++;
 
+    // IMPORTANT: Reserve buffer space BEFORE async operations to prevent race conditions
+    // When multiple nodes load concurrently, each must have its own unique buffer region
+    const startIndex = this._totalLoadedPoints;
+    node.bufferStartIndex = startIndex;
+    this._totalLoadedPoints += node.pointCount; // Reserve space immediately
+
     try {
       const hierarchyNode: Hierarchy.Node = {
         pointCount: node.pointCount,
@@ -663,14 +692,10 @@ export class CopcStreamingLoader {
         this._dimensionsDetected = true;
       }
 
-      // Extract point data into buffers
-      const startIndex = this._totalLoadedPoints;
-      node.bufferStartIndex = startIndex;
-
+      // Extract point data into buffers (using pre-reserved startIndex)
       await this._extractPointData(view, node, startIndex);
 
       node.state = 'loaded';
-      this._totalLoadedPoints += node.pointCount;
       this._totalLoadedNodes++;
 
       this._emit('nodeloaded', node);
@@ -681,6 +706,7 @@ export class CopcStreamingLoader {
     } catch (error) {
       node.state = 'error';
       node.error = error instanceof Error ? error.message : String(error);
+      console.warn(`Failed to load node ${node.key}:`, error);
       this._emit('error', error as Error);
     } finally {
       this._activeRequests--;

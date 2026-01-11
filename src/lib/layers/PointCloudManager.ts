@@ -74,6 +74,11 @@ export class PointCloudManager {
    * @param data - Updated point cloud data
    */
   updatePointCloud(id: string, data: PointCloudData): void {
+    // Skip update if no points to render
+    if (!data.positions || data.pointCount === 0) {
+      return;
+    }
+
     const existing = this._pointClouds.get(id);
 
     if (existing) {
