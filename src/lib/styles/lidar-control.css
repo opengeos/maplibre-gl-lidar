@@ -47,11 +47,10 @@
   fill: none;
 }
 
-/* Panel - dropdown below button */
+/* Panel - positioned dynamically by JavaScript for floating behavior */
 .lidar-control-panel {
   position: absolute;
-  top: 100%;
-  margin-top: 5px;
+  /* Position is set dynamically by _updatePanelPosition() */
   background: #fff;
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
@@ -84,17 +83,6 @@
 
 .lidar-control-panel::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.5);
-}
-
-/* Panel positioning based on parent control position */
-.maplibregl-ctrl-top-left .lidar-control-panel,
-.maplibregl-ctrl-bottom-left .lidar-control-panel {
-  left: 0;
-}
-
-.maplibregl-ctrl-top-right .lidar-control-panel,
-.maplibregl-ctrl-bottom-right .lidar-control-panel {
-  right: 0;
 }
 
 .lidar-control-panel.expanded {

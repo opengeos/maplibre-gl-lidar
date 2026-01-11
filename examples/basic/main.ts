@@ -22,6 +22,9 @@ map.addControl(new maplibregl.NavigationControl(), 'top-right');
 // Add fullscreen control
 map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
+// Add Globe control to the map
+map.addControl(new maplibregl.GlobeControl(), 'top-right');
+
 // Add scale control
 map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
@@ -51,10 +54,12 @@ map.on('load', () => {
     customLayerAdapters: [lidarAdapter],
     showStyleEditor: true, // Style editor doesn't work with custom layers
   });
-  map.addControl(layerControl, 'top-left');
+  map.addControl(layerControl, 'top-right');
 
   // Add control to the map
   map.addControl(lidarControl, 'top-right');
+
+
 
   // Load a point cloud programmatically
   lidarControl.loadPointCloud('https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz');
