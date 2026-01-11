@@ -83,10 +83,9 @@ export class LidarControl implements IControl {
   private _panelBuilder?: PanelBuilder;
   private _tooltip?: HTMLElement;
 
-  // Streaming components
-  private _streamingLoader?: CopcStreamingLoader;
-  private _viewportManager?: ViewportManager;
-  private _streamingPointCloudId?: string;
+  // Streaming components - Maps to support multiple streaming datasets
+  private _streamingLoaders: Map<string, CopcStreamingLoader> = new Map();
+  private _viewportManagers: Map<string, ViewportManager> = new Map();
 
   /**
    * Creates a new LidarControl instance.
@@ -438,9 +437,9 @@ export class LidarControl implements IControl {
    */
   unloadPointCloud(id?: string): void {
     if (id) {
-      // Check if this is the streaming point cloud
-      if (id === this._streamingPointCloudId) {
-        this.stopStreaming();
+      // Check if this is a streaming point cloud
+      if (this._streamingLoaders.has(id)) {
+        this.stopStreaming(id);
         return;
       }
 
@@ -476,11 +475,7 @@ export class LidarControl implements IControl {
     source: string | File | ArrayBuffer,
     options?: StreamingLoaderOptions
   ): Promise<PointCloudInfo> {
-    // Stop any existing streaming first
-    this.stopStreaming();
-
     const id = generateId('pc-stream');
-    this._streamingPointCloudId = id;
 
     // Determine name based on source type
     let name: string;
@@ -498,7 +493,7 @@ export class LidarControl implements IControl {
 
     try {
       // Create streaming loader with options
-      this._streamingLoader = new CopcStreamingLoader(source, {
+      const streamingLoader = new CopcStreamingLoader(source, {
         pointBudget: options?.pointBudget ?? this._options.streamingPointBudget,
         maxConcurrentRequests:
           options?.maxConcurrentRequests ?? this._options.streamingMaxConcurrentRequests,
@@ -511,17 +506,17 @@ export class LidarControl implements IControl {
       // Initialize - reads header and root hierarchy
       this._panelBuilder?.updateLoadingProgress(10, 'Initializing COPC file...');
       const { bounds, totalPoints, hasRGB, spacing } =
-        await this._streamingLoader.initialize();
+        await streamingLoader.initialize();
 
       this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
 
       // Setup callback for when points are loaded
-      this._streamingLoader.setOnPointsLoaded((data) => {
+      streamingLoader.setOnPointsLoaded((data) => {
         this._pointCloudManager?.updatePointCloud(id, data);
       });
 
       // Setup event handlers
-      this._streamingLoader.on('progress', (_, data) => {
+      streamingLoader.on('progress', (_, data) => {
         const progress = data as StreamingProgressEvent;
         this.setState({
           streamingProgress: {
@@ -544,14 +539,17 @@ export class LidarControl implements IControl {
         this._emit('streamingprogress');
       });
 
-      this._streamingLoader.on('budgetreached', () => {
+      streamingLoader.on('budgetreached', () => {
         this._emit('budgetreached');
       });
 
-      // Create viewport manager
-      this._viewportManager = new ViewportManager(
+      // Store the streaming loader
+      this._streamingLoaders.set(id, streamingLoader);
+
+      // Create viewport manager for this dataset
+      const viewportManager = new ViewportManager(
         this._map!,
-        (viewport) => this._handleViewportChangeForStreaming(viewport),
+        (viewport) => this._handleViewportChangeForStreaming(viewport, id),
         {
           debounceMs:
             options?.viewportDebounceMs ?? this._options.streamingViewportDebounceMs,
@@ -560,6 +558,9 @@ export class LidarControl implements IControl {
           spacing,
         }
       );
+
+      // Store the viewport manager
+      this._viewportManagers.set(id, viewportManager);
 
       // Create initial point cloud info
       const info: PointCloudInfo = {
@@ -583,7 +584,7 @@ export class LidarControl implements IControl {
       });
 
       // Start viewport-based loading
-      this._viewportManager.start();
+      viewportManager.start();
 
       // Auto-zoom if enabled
       if (this._options.autoZoom) {
@@ -601,7 +602,7 @@ export class LidarControl implements IControl {
 
         // Wait for fly animation then trigger viewport update
         setTimeout(() => {
-          this._viewportManager?.forceUpdate();
+          viewportManager.forceUpdate();
         }, 1100);
       }
 
@@ -622,15 +623,25 @@ export class LidarControl implements IControl {
           `CORS error detected for ${source}. Falling back to download mode...`
         );
 
-        // Clean up streaming state
-        this._streamingLoader?.destroy();
-        this._streamingLoader = undefined;
-        this._streamingPointCloudId = undefined;
+        // Clean up streaming state for this dataset
+        const streamingLoader = this._streamingLoaders.get(id);
+        if (streamingLoader) {
+          streamingLoader.destroy();
+          this._streamingLoaders.delete(id);
+        }
+        const viewportManager = this._viewportManagers.get(id);
+        if (viewportManager) {
+          viewportManager.destroy();
+          this._viewportManagers.delete(id);
+        }
+
+        // Update streamingActive state based on remaining loaders
+        const hasActiveStreaming = this._streamingLoaders.size > 0;
 
         // Reset state and try downloading
         this.setState({
           loading: true,
-          streamingActive: false,
+          streamingActive: hasActiveStreaming,
           error: null,
         });
 
@@ -783,24 +794,27 @@ export class LidarControl implements IControl {
    * Selects and loads nodes based on current viewport.
    *
    * @param viewport - Current viewport information
+   * @param datasetId - ID of the dataset to load nodes for
    */
   private async _handleViewportChangeForStreaming(
-    viewport: ViewportInfo
+    viewport: ViewportInfo,
+    datasetId: string
   ): Promise<void> {
-    if (!this._streamingLoader) return;
+    const streamingLoader = this._streamingLoaders.get(datasetId);
+    if (!streamingLoader) return;
 
     try {
       // Select nodes for this viewport
       const nodesToLoad =
-        await this._streamingLoader.selectNodesForViewport(viewport);
+        await streamingLoader.selectNodesForViewport(viewport);
 
       // Queue nodes for loading
       for (const node of nodesToLoad) {
-        this._streamingLoader.queueNode(node);
+        streamingLoader.queueNode(node);
       }
 
       // Start loading
-      await this._streamingLoader.loadQueuedNodes();
+      await streamingLoader.loadQueuedNodes();
     } catch (err) {
       console.warn('Failed to load nodes for viewport:', err);
     }
@@ -808,48 +822,97 @@ export class LidarControl implements IControl {
 
   /**
    * Stops streaming loading and cleans up resources.
+   *
+   * @param id - Optional ID of specific streaming dataset to stop. If not provided, stops all.
    */
-  stopStreaming(): void {
-    if (this._viewportManager) {
-      this._viewportManager.destroy();
-      this._viewportManager = undefined;
-    }
+  stopStreaming(id?: string): void {
+    if (id) {
+      // Stop specific streaming dataset
+      const viewportManager = this._viewportManagers.get(id);
+      if (viewportManager) {
+        viewportManager.destroy();
+        this._viewportManagers.delete(id);
+      }
 
-    if (this._streamingLoader) {
-      this._streamingLoader.destroy();
-      this._streamingLoader = undefined;
-    }
+      const streamingLoader = this._streamingLoaders.get(id);
+      if (streamingLoader) {
+        streamingLoader.destroy();
+        this._streamingLoaders.delete(id);
+      }
 
-    if (this._streamingPointCloudId) {
-      this._pointCloudManager?.removePointCloud(this._streamingPointCloudId);
+      // Remove point cloud from manager
+      this._pointCloudManager?.removePointCloud(id);
 
       // Remove from state
-      const pointClouds = this._state.pointClouds.filter(
-        (pc) => pc.id !== this._streamingPointCloudId
-      );
+      const pointClouds = this._state.pointClouds.filter((pc) => pc.id !== id);
+      const hasActiveStreaming = this._streamingLoaders.size > 0;
+
       this.setState({
         pointClouds,
         activePointCloudId:
-          this._state.activePointCloudId === this._streamingPointCloudId
+          this._state.activePointCloudId === id
+            ? pointClouds[0]?.id || null
+            : this._state.activePointCloudId,
+        streamingActive: hasActiveStreaming,
+        streamingProgress: hasActiveStreaming ? this._state.streamingProgress : undefined,
+      });
+
+      this._emit('streamingstop');
+      this._emit('unload');
+    } else {
+      // Stop all streaming datasets
+      const streamingIds = Array.from(this._streamingLoaders.keys());
+
+      // Destroy all viewport managers
+      for (const viewportManager of this._viewportManagers.values()) {
+        viewportManager.destroy();
+      }
+      this._viewportManagers.clear();
+
+      // Destroy all streaming loaders
+      for (const streamingLoader of this._streamingLoaders.values()) {
+        streamingLoader.destroy();
+      }
+      this._streamingLoaders.clear();
+
+      // Remove all streaming point clouds from manager
+      for (const streamingId of streamingIds) {
+        this._pointCloudManager?.removePointCloud(streamingId);
+      }
+
+      // Remove streaming point clouds from state
+      const pointClouds = this._state.pointClouds.filter(
+        (pc) => !streamingIds.includes(pc.id)
+      );
+
+      this.setState({
+        pointClouds,
+        activePointCloudId:
+          streamingIds.includes(this._state.activePointCloudId || '')
             ? pointClouds[0]?.id || null
             : this._state.activePointCloudId,
         streamingActive: false,
         streamingProgress: undefined,
       });
 
-      this._streamingPointCloudId = undefined;
-      this._emit('streamingstop');
-      this._emit('unload');
+      if (streamingIds.length > 0) {
+        this._emit('streamingstop');
+        this._emit('unload');
+      }
     }
   }
 
   /**
    * Checks if streaming mode is currently active.
    *
+   * @param id - Optional ID to check specific dataset. If not provided, checks if any streaming is active.
    * @returns True if streaming is active
    */
-  isStreaming(): boolean {
-    return this._state.streamingActive ?? false;
+  isStreaming(id?: string): boolean {
+    if (id) {
+      return this._streamingLoaders.has(id);
+    }
+    return this._streamingLoaders.size > 0;
   }
 
   /**
