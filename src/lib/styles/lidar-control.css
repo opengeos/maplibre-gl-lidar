@@ -383,26 +383,37 @@
   gap: 4px;
 }
 
-.lidar-pointcloud-action {
-  padding: 4px 8px;
+.lidar-control-panel .lidar-pointcloud-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
   font-size: 10px;
-  background: transparent;
-  border: 1px solid #ddd;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
   border-radius: 3px;
   cursor: pointer;
-  color: #555;
+  color: #333;
+  font-weight: 500;
+  width: 64px;
+  height: auto;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
-.lidar-pointcloud-action:hover {
+.lidar-control-panel .lidar-pointcloud-action:hover {
   background: #e0e0e0;
+  border-color: #bbb;
 }
 
-.lidar-pointcloud-action.remove {
+.lidar-control-panel .lidar-pointcloud-action.remove {
+  background: #fff5f5;
   color: #dc3545;
   border-color: #dc3545;
 }
 
-.lidar-pointcloud-action.remove:hover {
+.lidar-control-panel .lidar-pointcloud-action.remove:hover {
   background: #dc3545;
   color: #fff;
 }
