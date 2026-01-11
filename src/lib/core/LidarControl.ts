@@ -32,6 +32,8 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & P
   pickable: false,
   autoZoom: true,
   pickInfoFields: undefined, // Show all fields by default
+  zOffsetEnabled: false,
+  zOffset: 0,
 };
 
 /**
@@ -92,6 +94,8 @@ export class LidarControl implements IControl {
       loading: false,
       error: null,
       pickInfoFields: this._options.pickInfoFields,
+      zOffsetEnabled: this._options.zOffsetEnabled ?? false,
+      zOffset: this._options.zOffset ?? 0,
     };
     this._loader = new PointCloudLoader();
   }
@@ -116,6 +120,7 @@ export class LidarControl implements IControl {
       colorScheme: this._state.colorScheme,
       elevationRange: this._state.elevationRange,
       pickable: this._state.pickable,
+      zOffset: this._state.zOffset,
       onHover: (info) => this._handlePointHover(info),
     });
 
@@ -458,6 +463,43 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Sets whether Z offset adjustment is enabled.
+   *
+   * @param enabled - Whether Z offset is enabled
+   */
+  setZOffsetEnabled(enabled: boolean): void {
+    this._state.zOffsetEnabled = enabled;
+    if (!enabled) {
+      // Reset offset to 0 when disabled
+      this._state.zOffset = 0;
+      this._pointCloudManager?.setZOffset(0);
+    }
+    this._emit('stylechange');
+    this._emit('statechange');
+  }
+
+  /**
+   * Sets the Z offset value for vertical adjustment.
+   *
+   * @param offset - Z offset in meters
+   */
+  setZOffset(offset: number): void {
+    this._state.zOffset = offset;
+    this._pointCloudManager?.setZOffset(offset);
+    this._emit('stylechange');
+    this._emit('statechange');
+  }
+
+  /**
+   * Gets the current Z offset value.
+   *
+   * @returns Z offset in meters
+   */
+  getZOffset(): number {
+    return this._state.zOffset;
+  }
+
+  /**
    * Gets information about loaded point clouds.
    *
    * @returns Array of point cloud info objects
@@ -610,6 +652,8 @@ export class LidarControl implements IControl {
           }
         },
         onPickableChange: (pickable) => this.setPickable(pickable),
+        onZOffsetEnabledChange: (enabled) => this.setZOffsetEnabled(enabled),
+        onZOffsetChange: (offset) => this.setZOffset(offset),
         onUnload: (id) => this.unloadPointCloud(id),
         onZoomTo: (id) => this.flyToPointCloud(id),
       },

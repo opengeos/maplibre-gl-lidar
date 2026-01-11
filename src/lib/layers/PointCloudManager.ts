@@ -36,6 +36,7 @@ export class PointCloudManager {
       colorScheme: options.colorScheme ?? 'elevation',
       elevationRange: options.elevationRange ?? null,
       pickable: options.pickable ?? false,
+      zOffset: options.zOffset ?? 0,
       onHover: options.onHover,
     };
   }
@@ -181,6 +182,15 @@ export class PointCloudManager {
   }
 
   /**
+   * Sets the Z offset for vertical adjustment.
+   *
+   * @param offset - Z offset in meters
+   */
+  setZOffset(offset: number): void {
+    this.updateStyle({ zOffset: offset });
+  }
+
+  /**
    * Clears all point clouds.
    */
   clear(): void {
@@ -214,6 +224,7 @@ export class PointCloudManager {
 
     const { data, colors, coordinateOrigin } = pc;
     const elevationRange = this._options.elevationRange;
+    const zOffset = this._options.zOffset ?? 0;
 
     // Remove existing chunk layers first (use a generous upper bound)
     const maxPossibleChunks = Math.ceil(data.pointCount / 1000000) + 1;
@@ -256,7 +267,8 @@ export class PointCloudManager {
 
         chunkPositions[i * 3] = data.positions[srcIdx * 3];
         chunkPositions[i * 3 + 1] = data.positions[srcIdx * 3 + 1];
-        chunkPositions[i * 3 + 2] = data.positions[srcIdx * 3 + 2];
+        // Apply Z offset to elevation
+        chunkPositions[i * 3 + 2] = data.positions[srcIdx * 3 + 2] + zOffset;
 
         chunkColors[i * 4] = colors[srcIdx * 4];
         chunkColors[i * 4 + 1] = colors[srcIdx * 4 + 1];
@@ -315,6 +327,7 @@ export class PointCloudManager {
 
       // Create a unique data fingerprint to force deck.gl to update
       const elevationKey = elevationRange ? `${elevationRange[0]}-${elevationRange[1]}` : 'none';
+      const zOffsetKey = zOffset;
 
       const layer = new PointCloudLayer({
         id: `pointcloud-${id}-chunk${chunk}`,
@@ -337,7 +350,7 @@ export class PointCloudManager {
         highlightColor: [255, 255, 0, 200],
         // Force update when these values change
         updateTriggers: {
-          getPosition: [elevationKey, chunkSize],
+          getPosition: [elevationKey, zOffsetKey, chunkSize],
           getColor: [elevationKey, chunkSize],
         },
       });

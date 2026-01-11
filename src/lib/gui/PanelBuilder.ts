@@ -15,6 +15,8 @@ export interface PanelBuilderCallbacks {
   onColorSchemeChange: (scheme: ColorScheme) => void;
   onElevationRangeChange: (range: [number, number] | null) => void;
   onPickableChange: (pickable: boolean) => void;
+  onZOffsetEnabledChange: (enabled: boolean) => void;
+  onZOffsetChange: (offset: number) => void;
   onUnload: (id: string) => void;
   onZoomTo: (id: string) => void;
 }
@@ -37,6 +39,9 @@ export class PanelBuilder {
   private _pickableCheckbox?: HTMLInputElement;
   private _elevationSlider?: DualRangeSlider;
   private _elevationCheckbox?: HTMLInputElement;
+  private _zOffsetCheckbox?: HTMLInputElement;
+  private _zOffsetSlider?: RangeSlider;
+  private _zOffsetSliderContainer?: HTMLElement;
   private _loadingIndicator?: HTMLElement;
   private _errorMessage?: HTMLElement;
 
@@ -118,6 +123,17 @@ export class PanelBuilder {
     // Update pickable checkbox
     if (this._pickableCheckbox) {
       this._pickableCheckbox.checked = state.pickable ?? false;
+    }
+
+    // Update Z offset controls
+    if (this._zOffsetCheckbox) {
+      this._zOffsetCheckbox.checked = state.zOffsetEnabled ?? false;
+    }
+    if (this._zOffsetSliderContainer) {
+      this._zOffsetSliderContainer.style.display = state.zOffsetEnabled ? 'block' : 'none';
+    }
+    if (this._zOffsetSlider) {
+      this._zOffsetSlider.setValue(state.zOffset ?? 0);
     }
 
     // Update elevation slider bounds when point clouds change
@@ -286,6 +302,9 @@ export class PanelBuilder {
     // Elevation filter (collapsible)
     section.appendChild(this._buildElevationFilter());
 
+    // Z offset control (collapsible)
+    section.appendChild(this._buildZOffsetControl());
+
     return section;
   }
 
@@ -360,6 +379,74 @@ export class PanelBuilder {
         }
       } else {
         this._callbacks.onElevationRangeChange(null);
+      }
+    });
+
+    return group;
+  }
+
+  /**
+   * Builds the Z offset control with checkbox and slider.
+   */
+  private _buildZOffsetControl(): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'lidar-control-group';
+
+    // Checkbox row
+    const labelRow = document.createElement('div');
+    labelRow.className = 'lidar-control-label-row';
+    labelRow.style.cursor = 'pointer';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'lidar-zoffset-checkbox';
+    checkbox.checked = this._state.zOffsetEnabled ?? false;
+    checkbox.style.marginRight = '6px';
+    this._zOffsetCheckbox = checkbox;
+
+    const label = document.createElement('label');
+    label.className = 'lidar-control-label';
+    label.htmlFor = 'lidar-zoffset-checkbox';
+    label.style.display = 'inline';
+    label.style.cursor = 'pointer';
+    label.textContent = 'Z Offset';
+
+    labelRow.appendChild(checkbox);
+    labelRow.appendChild(label);
+    group.appendChild(labelRow);
+
+    // Slider container (hidden by default)
+    const sliderContainer = document.createElement('div');
+    sliderContainer.style.display = this._state.zOffsetEnabled ? 'block' : 'none';
+    sliderContainer.style.marginTop = '8px';
+    this._zOffsetSliderContainer = sliderContainer;
+
+    // Get Z range from loaded point clouds for sensible slider bounds
+    const bounds = this._getElevationBounds();
+    const range = bounds.max - bounds.min;
+    const maxOffset = Math.max(100, Math.ceil(range)); // At least 100m range
+
+    // Create slider
+    this._zOffsetSlider = new RangeSlider({
+      label: 'Offset (m)',
+      min: -maxOffset,
+      max: maxOffset,
+      step: 1,
+      value: this._state.zOffset ?? 0,
+      onChange: (v) => this._callbacks.onZOffsetChange(v),
+    });
+
+    sliderContainer.appendChild(this._zOffsetSlider.render());
+    group.appendChild(sliderContainer);
+
+    // Toggle visibility and enable/disable offset
+    checkbox.addEventListener('change', () => {
+      sliderContainer.style.display = checkbox.checked ? 'block' : 'none';
+      this._callbacks.onZOffsetEnabledChange(checkbox.checked);
+      if (!checkbox.checked) {
+        // Reset offset to 0 when disabled
+        this._zOffsetSlider?.setValue(0);
+        this._callbacks.onZOffsetChange(0);
       }
     });
 

@@ -17,6 +17,8 @@ const DEFAULT_STATE: LidarState = {
   pickable: false,
   loading: false,
   error: null,
+  zOffsetEnabled: false,
+  zOffset: 0,
 };
 
 /**
@@ -109,6 +111,20 @@ export function useLidarState(initialState?: Partial<LidarState>) {
   }, []);
 
   /**
+   * Sets whether Z offset is enabled
+   */
+  const setZOffsetEnabled = useCallback((zOffsetEnabled: boolean) => {
+    setState((prev) => ({ ...prev, zOffsetEnabled }));
+  }, []);
+
+  /**
+   * Sets the Z offset value
+   */
+  const setZOffset = useCallback((zOffset: number) => {
+    setState((prev) => ({ ...prev, zOffset }));
+  }, []);
+
+  /**
    * Resets the state to default values
    */
   const reset = useCallback(() => {
@@ -132,6 +148,8 @@ export function useLidarState(initialState?: Partial<LidarState>) {
     setColorScheme,
     setElevationRange,
     setPointBudget,
+    setZOffsetEnabled,
+    setZOffset,
     reset,
     toggle,
   };

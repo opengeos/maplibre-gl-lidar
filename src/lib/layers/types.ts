@@ -61,6 +61,12 @@ export interface PointCloudLayerOptions {
   pickable: boolean;
 
   /**
+   * Z offset in meters (shifts point cloud vertically)
+   * @default 0
+   */
+  zOffset: number;
+
+  /**
    * Callback when a point is hovered (requires pickable: true)
    */
   onHover?: (info: PickedPointInfo | null) => void;

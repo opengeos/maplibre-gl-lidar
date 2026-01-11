@@ -130,6 +130,18 @@ export interface LidarControlOptions {
    * @default undefined (show all)
    */
   pickInfoFields?: string[];
+
+  /**
+   * Whether Z offset adjustment is enabled
+   * @default false
+   */
+  zOffsetEnabled?: boolean;
+
+  /**
+   * Z offset value in meters (shifts point cloud vertically)
+   * @default 0
+   */
+  zOffset?: number;
 }
 
 /**
@@ -150,6 +162,10 @@ export interface LidarState {
   error: string | null;
   /** List of attribute names to show in pick info, or undefined to show all */
   pickInfoFields?: string[];
+  /** Whether Z offset adjustment is enabled */
+  zOffsetEnabled: boolean;
+  /** Z offset value in meters */
+  zOffset: number;
 }
 
 /**
