@@ -636,7 +636,7 @@ export class LidarControl implements IControl {
       // Create initial point cloud info
       const info: PointCloudInfo = {
         id,
-        name: `${name} (streaming)`,
+        name: `${name}`,
         pointCount: totalPoints,
         bounds,
         hasRGB,

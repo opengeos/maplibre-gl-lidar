@@ -76,11 +76,9 @@ async function getLazPerf(): Promise<LazPerf> {
   if (!lazPerfInstance) {
     lazPerfInstance = await createLazPerf({
       locateFile: (path: string) => {
-        // Load WASM from public folder, accounting for base URL
+        // Load WASM from CDN for reliable loading in all environments
         if (path.endsWith('.wasm')) {
-          // Use Vite's BASE_URL or fallback to root
-          const base = import.meta.env?.BASE_URL || '/';
-          return `${base}laz-perf.wasm`;
+          return 'https://unpkg.com/laz-perf@0.0.7/lib/web/laz-perf.wasm';
         }
         return path;
       },
