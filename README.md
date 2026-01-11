@@ -389,4 +389,4 @@ MIT
 
 ## Credits
 
-Developed by [Qiusheng Wu](https://github.com/giswqs) at [Open Geospatial Solutions](https://github.com/opengeos).
+The sample dataset [autzen-classified.copc.laz](https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz) is from [Hobu, Inc.](https://hobu.co). Credits to [Howard Butler](https://github.com/hobu).
