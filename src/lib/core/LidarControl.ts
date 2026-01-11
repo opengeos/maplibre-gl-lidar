@@ -8,6 +8,7 @@ import type {
   PointCloudInfo,
   ColorScheme,
 } from './types';
+import type { PickedPointInfo } from '../layers/types';
 import { DeckOverlay } from './DeckOverlay';
 import { PointCloudLoader } from '../loaders/PointCloudLoader';
 import { PointCloudManager } from '../layers/PointCloudManager';
@@ -21,13 +22,14 @@ const DEFAULT_OPTIONS: Required<LidarControlOptions> = {
   collapsed: true,
   position: 'top-right',
   title: 'LiDAR Viewer',
-  panelWidth: 360,
+  panelWidth: 365,
   className: '',
   pointSize: 2,
   opacity: 1.0,
   colorScheme: 'elevation',
   pointBudget: 1000000,
   elevationRange: null,
+  pickable: false,
 };
 
 /**
@@ -65,6 +67,7 @@ export class LidarControl implements IControl {
   private _pointCloudManager?: PointCloudManager;
   private _loader: PointCloudLoader;
   private _panelBuilder?: PanelBuilder;
+  private _tooltip?: HTMLElement;
 
   /**
    * Creates a new LidarControl instance.
@@ -83,6 +86,7 @@ export class LidarControl implements IControl {
       colorScheme: this._options.colorScheme,
       elevationRange: this._options.elevationRange,
       pointBudget: this._options.pointBudget,
+      pickable: this._options.pickable,
       loading: false,
       error: null,
     };
@@ -108,7 +112,13 @@ export class LidarControl implements IControl {
       opacity: this._state.opacity,
       colorScheme: this._state.colorScheme,
       elevationRange: this._state.elevationRange,
+      pickable: this._state.pickable,
+      onHover: (info) => this._handlePointHover(info),
     });
+
+    // Create tooltip element
+    this._tooltip = this._createTooltip();
+    document.body.appendChild(this._tooltip);
 
     // Create UI
     this._container = this._createContainer();
@@ -131,6 +141,9 @@ export class LidarControl implements IControl {
     // Clean up deck.gl overlay
     this._deckOverlay?.destroy();
 
+    // Remove tooltip
+    this._tooltip?.parentNode?.removeChild(this._tooltip);
+
     // Remove DOM elements
     this._container?.parentNode?.removeChild(this._container);
 
@@ -141,6 +154,7 @@ export class LidarControl implements IControl {
     this._deckOverlay = undefined;
     this._pointCloudManager = undefined;
     this._panelBuilder = undefined;
+    this._tooltip = undefined;
     this._eventHandlers.clear();
   }
 
@@ -424,6 +438,18 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Sets whether points are pickable (enables hover/click interactions).
+   *
+   * @param pickable - Whether points should be pickable
+   */
+  setPickable(pickable: boolean): void {
+    this._state.pickable = pickable;
+    this._pointCloudManager?.setPickable(pickable);
+    this._emit('stylechange');
+    this._emit('statechange');
+  }
+
+  /**
    * Gets information about loaded point clouds.
    *
    * @returns Array of point cloud info objects
@@ -576,6 +602,7 @@ export class LidarControl implements IControl {
             this.clearElevationRange();
           }
         },
+        onPickableChange: (pickable) => this.setPickable(pickable),
         onUnload: (id) => this.unloadPointCloud(id),
         onZoomTo: (id) => this.flyToPointCloud(id),
       },
@@ -588,5 +615,87 @@ export class LidarControl implements IControl {
     panel.appendChild(content);
 
     return panel;
+  }
+
+  /**
+   * Creates the tooltip element for point picking.
+   *
+   * @returns The tooltip element
+   */
+  private _createTooltip(): HTMLElement {
+    const tooltip = document.createElement('div');
+    tooltip.className = 'lidar-tooltip';
+    tooltip.style.cssText = `
+      position: fixed;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.85);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      z-index: 10000;
+      display: none;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    `;
+    return tooltip;
+  }
+
+  /**
+   * Handles point hover events from the point cloud layer.
+   *
+   * @param info - Picked point information or null if no point
+   */
+  private _handlePointHover(info: PickedPointInfo | null): void {
+    if (!this._tooltip) return;
+
+    if (info && this._state.pickable) {
+      // Format classification name
+      const classNames: Record<number, string> = {
+        0: 'Never Classified',
+        1: 'Unassigned',
+        2: 'Ground',
+        3: 'Low Vegetation',
+        4: 'Medium Vegetation',
+        5: 'High Vegetation',
+        6: 'Building',
+        7: 'Low Point',
+        8: 'Reserved',
+        9: 'Water',
+        10: 'Rail',
+        11: 'Road Surface',
+        12: 'Reserved',
+        13: 'Wire - Guard',
+        14: 'Wire - Conductor',
+        15: 'Transmission Tower',
+        16: 'Wire - Connector',
+        17: 'Bridge Deck',
+        18: 'High Noise',
+      };
+
+      let html = `
+        <div style="margin-bottom: 4px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">Point Info</div>
+        <div>Lng: ${info.longitude.toFixed(6)}</div>
+        <div>Lat: ${info.latitude.toFixed(6)}</div>
+        <div>Elevation: ${info.elevation.toFixed(2)} m</div>
+      `;
+
+      if (info.intensity !== undefined) {
+        html += `<div>Intensity: ${(info.intensity * 100).toFixed(1)}%</div>`;
+      }
+
+      if (info.classification !== undefined) {
+        const className = classNames[info.classification] || `Class ${info.classification}`;
+        html += `<div>Class: ${className}</div>`;
+      }
+
+      this._tooltip.innerHTML = html;
+      this._tooltip.style.display = 'block';
+      this._tooltip.style.left = `${info.x + 15}px`;
+      this._tooltip.style.top = `${info.y + 15}px`;
+    } else {
+      this._tooltip.style.display = 'none';
+    }
   }
 }

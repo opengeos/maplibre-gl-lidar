@@ -49,28 +49,28 @@ map.on('load', () => {
     }
   });
 
-  lidarControl.on('loaderror', (event) => {
-    console.error('Error loading point cloud:', event.error);
-  });
+  // lidarControl.on('loaderror', (event) => {
+  //   console.error('Error loading point cloud:', event.error);
+  // });
 
-  lidarControl.on('statechange', (event) => {
-    console.log('LiDAR state changed:', event.state);
-  });
+  // lidarControl.on('statechange', (event) => {
+  //   console.log('LiDAR state changed:', event.state);
+  // });
 
-  lidarControl.on('stylechange', () => {
-    console.log('LiDAR style changed');
-  });
+  // lidarControl.on('stylechange', () => {
+  //   console.log('LiDAR style changed');
+  // });
 
-  lidarControl.on('collapse', () => {
-    console.log('LiDAR panel collapsed');
-  });
+  // lidarControl.on('collapse', () => {
+  //   console.log('LiDAR panel collapsed');
+  // });
 
-  lidarControl.on('expand', () => {
-    console.log('LiDAR panel expanded');
-  });
+  // lidarControl.on('expand', () => {
+  //   console.log('LiDAR panel expanded');
+  // });
 
-  console.log('LiDAR control added to map');
-  console.log('Open the control panel and load a LAS/LAZ file to visualize point cloud data.');
+  // console.log('LiDAR control added to map');
+  // console.log('Open the control panel and load a LAS/LAZ file to visualize point cloud data.');
 
   // Example: Load a point cloud programmatically (uncomment to use)
   // lidarControl.loadPointCloud('/data/autzen-classified.copc.laz')

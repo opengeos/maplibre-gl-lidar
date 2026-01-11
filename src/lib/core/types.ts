@@ -110,6 +110,12 @@ export interface LidarControlOptions {
    * @default null
    */
   elevationRange?: [number, number] | null;
+
+  /**
+   * Whether points are pickable (enables hover/click interactions)
+   * @default false
+   */
+  pickable?: boolean;
 }
 
 /**
@@ -125,6 +131,7 @@ export interface LidarState {
   colorScheme: ColorScheme;
   elevationRange: [number, number] | null;
   pointBudget: number;
+  pickable: boolean;
   loading: boolean;
   error: string | null;
 }

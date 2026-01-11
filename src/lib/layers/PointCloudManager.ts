@@ -1,9 +1,10 @@
 import { PointCloudLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
+import type { PickingInfo } from '@deck.gl/core';
 import type { DeckOverlay } from '../core/DeckOverlay';
 import type { PointCloudData } from '../loaders/types';
 import type { ColorScheme, PointCloudBounds } from '../core/types';
-import type { PointCloudLayerOptions } from './types';
+import type { PointCloudLayerOptions, PickedPointInfo } from './types';
 import { ColorSchemeProcessor } from '../colorizers/ColorScheme';
 
 /**
@@ -34,7 +35,18 @@ export class PointCloudManager {
       opacity: options.opacity ?? 1.0,
       colorScheme: options.colorScheme ?? 'elevation',
       elevationRange: options.elevationRange ?? null,
+      pickable: options.pickable ?? false,
+      onHover: options.onHover,
     };
+  }
+
+  /**
+   * Sets the hover callback.
+   *
+   * @param callback - Function called when a point is hovered
+   */
+  setOnHover(callback: ((info: PickedPointInfo | null) => void) | undefined): void {
+    this._options.onHover = callback;
   }
 
   /**
@@ -48,8 +60,6 @@ export class PointCloudManager {
 
     // Use the coordinate origin from the data - positions are already stored as offsets
     const coordinateOrigin = data.coordinateOrigin;
-
-    console.log(`Point cloud coordinate origin: [${coordinateOrigin[0].toFixed(6)}, ${coordinateOrigin[1].toFixed(6)}]`);
 
     this._pointClouds.set(id, { id, data, colors, coordinateOrigin });
     this._createLayer(id);
@@ -162,6 +172,15 @@ export class PointCloudManager {
   }
 
   /**
+   * Sets whether points are pickable (enables hover/click interactions).
+   *
+   * @param pickable - Whether points should be pickable
+   */
+  setPickable(pickable: boolean): void {
+    this.updateStyle({ pickable });
+  }
+
+  /**
    * Clears all point clouds.
    */
   clear(): void {
@@ -194,14 +213,9 @@ export class PointCloudManager {
 
     const { data, colors, coordinateOrigin } = pc;
 
-    console.log(`Creating PointCloudLayer for ${data.pointCount.toLocaleString()} points`);
-    console.log(`Using coordinate origin: [${coordinateOrigin[0].toFixed(6)}, ${coordinateOrigin[1].toFixed(6)}]`);
-
     // Chunk size - 1 million points per layer to stay within WebGL limits
     const CHUNK_SIZE = 1000000;
     const numChunks = Math.ceil(data.pointCount / CHUNK_SIZE);
-
-    console.log(`Splitting into ${numChunks} chunks of up to ${CHUNK_SIZE.toLocaleString()} points each`);
 
     for (let chunk = 0; chunk < numChunks; chunk++) {
       const startIdx = chunk * CHUNK_SIZE;
@@ -227,6 +241,37 @@ export class PointCloudManager {
         chunkColors[i * 4 + 3] = colors[srcIdx * 4 + 3];
       }
 
+      // Create hover handler for this chunk
+      const handleHover = (info: PickingInfo) => {
+        if (!this._options.onHover) return;
+
+        if (info.index >= 0 && info.picked) {
+          const globalIndex = startIdx + info.index;
+          const pointInfo: PickedPointInfo = {
+            index: globalIndex,
+            longitude: coordinateOrigin[0] + chunkPositions[info.index * 3],
+            latitude: coordinateOrigin[1] + chunkPositions[info.index * 3 + 1],
+            elevation: chunkPositions[info.index * 3 + 2],
+            x: info.x,
+            y: info.y,
+          };
+
+          // Add intensity if available
+          if (data.intensities) {
+            pointInfo.intensity = data.intensities[globalIndex];
+          }
+
+          // Add classification if available
+          if (data.classifications) {
+            pointInfo.classification = data.classifications[globalIndex];
+          }
+
+          this._options.onHover(pointInfo);
+        } else {
+          this._options.onHover(null);
+        }
+      };
+
       const layer = new PointCloudLayer({
         id: `pointcloud-${id}-chunk${chunk}`,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
@@ -242,13 +287,14 @@ export class PointCloudManager {
         sizeUnits: 'pixels',
         opacity: this._options.opacity,
         getNormal: [0, 0, 1],
-        pickable: false,
+        pickable: this._options.pickable,
+        onHover: this._options.pickable ? handleHover : undefined,
+        autoHighlight: this._options.pickable,
+        highlightColor: [255, 255, 0, 200],
       });
 
       this._deckOverlay.addLayer(`pointcloud-${id}-chunk${chunk}`, layer);
     }
-
-    console.log(`Created ${numChunks} PointCloudLayers for point cloud ${id}`);
   }
 
   /**

@@ -13,6 +13,7 @@ export interface PanelBuilderCallbacks {
   onOpacityChange: (opacity: number) => void;
   onColorSchemeChange: (scheme: ColorScheme) => void;
   onElevationRangeChange: (range: [number, number] | null) => void;
+  onPickableChange: (pickable: boolean) => void;
   onUnload: (id: string) => void;
   onZoomTo: (id: string) => void;
 }
@@ -32,6 +33,7 @@ export class PanelBuilder {
   private _pointSizeSlider?: RangeSlider;
   private _opacitySlider?: RangeSlider;
   private _pointCloudsList?: HTMLElement;
+  private _pickableCheckbox?: HTMLInputElement;
   private _loadingIndicator?: HTMLElement;
   private _errorMessage?: HTMLElement;
 
@@ -108,6 +110,11 @@ export class PanelBuilder {
     // Update color scheme
     if (this._colorSelect && typeof state.colorScheme === 'string') {
       this._colorSelect.value = state.colorScheme;
+    }
+
+    // Update pickable checkbox
+    if (this._pickableCheckbox) {
+      this._pickableCheckbox.checked = state.pickable ?? false;
     }
 
     // Disable/enable inputs during loading
@@ -260,6 +267,9 @@ export class PanelBuilder {
     });
     section.appendChild(this._opacitySlider.render());
 
+    // Pickable checkbox
+    section.appendChild(this._buildPickableCheckbox());
+
     // Elevation filter (collapsible)
     section.appendChild(this._buildElevationFilter());
 
@@ -342,6 +352,42 @@ export class PanelBuilder {
         this._callbacks.onElevationRangeChange([min, max]);
       }
     });
+
+    return group;
+  }
+
+  /**
+   * Builds the pickable checkbox control.
+   */
+  private _buildPickableCheckbox(): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'lidar-control-group';
+
+    const labelRow = document.createElement('div');
+    labelRow.className = 'lidar-control-label-row';
+    labelRow.style.cursor = 'pointer';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'lidar-pickable-checkbox';
+    checkbox.checked = this._state.pickable ?? false;
+    checkbox.style.marginRight = '6px';
+    this._pickableCheckbox = checkbox;
+
+    const label = document.createElement('label');
+    label.className = 'lidar-control-label';
+    label.htmlFor = 'lidar-pickable-checkbox';
+    label.style.display = 'inline';
+    label.style.cursor = 'pointer';
+    label.textContent = 'Enable point picking';
+
+    checkbox.addEventListener('change', () => {
+      this._callbacks.onPickableChange(checkbox.checked);
+    });
+
+    labelRow.appendChild(checkbox);
+    labelRow.appendChild(label);
+    group.appendChild(labelRow);
 
     return group;
   }

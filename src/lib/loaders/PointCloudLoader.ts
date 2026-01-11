@@ -75,7 +75,6 @@ function getVerticalUnitConversionFactor(wkt: string): number {
   if (wktLower.includes('us survey foot') ||
       wktLower.includes('us_survey_foot') ||
       wktLower.includes('foot_us')) {
-    console.log('Detected US Survey Feet in WKT, will convert to meters');
     return US_SURVEY_FEET_TO_METERS;
   }
 
@@ -90,7 +89,6 @@ function getVerticalUnitConversionFactor(wkt: string): number {
 
   for (const pattern of footPatterns) {
     if (pattern.test(wkt)) {
-      console.log('Detected Feet in WKT, will convert to meters');
       return FEET_TO_METERS;
     }
   }
@@ -185,7 +183,6 @@ export class PointCloudLoader {
 
     // Load the full hierarchy (all pages recursively)
     const hierarchy = await Copc.loadHierarchy(url, copc.info);
-    console.log(`Loaded hierarchy with ${Object.keys(hierarchy.nodes).length} nodes`);
 
     return await this._processCopcData(url, copc, hierarchy, lazPerf);
   }
@@ -214,7 +211,6 @@ export class PointCloudLoader {
 
     // Load the full hierarchy (all pages recursively)
     const hierarchy = await this._loadFullHierarchy(getter, copc.info);
-    console.log(`Loaded hierarchy with ${Object.keys(hierarchy.nodes).length} nodes`);
 
     return await this._processCopcData(getter, copc, hierarchy, lazPerf);
   }
@@ -271,24 +267,14 @@ export class PointCloudLoader {
       try {
         // Extract PROJCS from compound coordinate system (COMPD_CS) if present
         const wktToUse = extractProjcsFromWkt(copc.wkt);
-        console.log('Using WKT for transformation:', wktToUse.substring(0, 100) + '...');
 
         // Create a proj4 converter from source CRS to WGS84
-        // The correct way is to pass both projection strings to proj4()
         const projConverter = proj4(wktToUse, 'EPSG:4326');
         transformer = (coord: [number, number]) => projConverter.forward(coord) as [number, number];
         needsTransform = true;
-        console.log('Coordinate transformation enabled');
-
-        // Test the transformation with a sample coordinate
-        const testCoord = transformer([0, 0]);
-        console.log('Test transform [0,0] ->', testCoord);
 
         // Detect if vertical units are in feet and need conversion to meters
         verticalUnitFactor = getVerticalUnitConversionFactor(copc.wkt);
-        if (verticalUnitFactor !== 1.0) {
-          console.log(`Vertical unit conversion factor: ${verticalUnitFactor}`);
-        }
       } catch (e) {
         console.warn('Failed to setup coordinate transformation:', e);
       }
@@ -304,26 +290,15 @@ export class PointCloudLoader {
 
     // Calculate total points
     const totalPoints = nodesToLoad.reduce((sum, { node }) => sum + node.pointCount, 0);
-    console.log(`Loading ${nodesToLoad.length} nodes with ${totalPoints.toLocaleString()} total points`);
 
     // Calculate bounds FIRST - we need these to compute the coordinate origin
     // This avoids Float32 precision loss by storing positions as small offsets
     let bounds: PointCloudBounds;
     let coordinateOrigin: [number, number, number];
 
-    // Log original header bounds for debugging
-    console.log('Original header bounds (projected CRS):');
-    console.log(`  X: ${header.min[0]} to ${header.max[0]}`);
-    console.log(`  Y: ${header.min[1]} to ${header.max[1]}`);
-    console.log(`  Z: ${header.min[2]} to ${header.max[2]}`);
-
     if (needsTransform && transformer) {
       const [minLng, minLat] = transformer([header.min[0], header.min[1]]);
       const [maxLng, maxLat] = transformer([header.max[0], header.max[1]]);
-
-      console.log('Transformed corner coordinates:');
-      console.log(`  min corner: [${header.min[0]}, ${header.min[1]}] -> [${minLng}, ${minLat}]`);
-      console.log(`  max corner: [${header.max[0]}, ${header.max[1]}] -> [${maxLng}, ${maxLat}]`);
 
       bounds = {
         minX: Math.min(minLng, maxLng),
@@ -339,9 +314,6 @@ export class PointCloudLoader {
         (bounds.minY + bounds.maxY) / 2,
         0,
       ];
-      console.log('Transformed bounds (elevation in meters):', bounds);
-      console.log(`Coordinate origin: [${coordinateOrigin[0]}, ${coordinateOrigin[1]}]`);
-      console.log(`Expected offset range: X=[${bounds.minX - coordinateOrigin[0]}, ${bounds.maxX - coordinateOrigin[0]}], Y=[${bounds.minY - coordinateOrigin[1]}, ${bounds.maxY - coordinateOrigin[1]}]`);
     } else {
       bounds = {
         minX: header.min[0],
@@ -403,28 +375,13 @@ export class PointCloudLoader {
 
         for (let i = 0; i < node.pointCount; i++) {
           // copc.js getters already return scaled/offset coordinates, NOT raw integers
-          // So we use them directly without applying scale/offset again
           const x = xGetter(i);
           const y = yGetter(i);
           const z = zGetter(i);
 
-          // Debug: log first point's values
-          if (pointIndex === 0) {
-            console.log('First point debug:');
-            console.log(`  Coordinates from getter (already scaled): X=${x}, Y=${y}, Z=${z}`);
-            console.log(`  Header bounds check: X in [${header.min[0]}, ${header.max[0]}]? ${x >= header.min[0] && x <= header.max[0]}`);
-          }
-
           // Transform coordinates to WGS84 if needed
           if (needsTransform && transformer) {
             const [lng, lat] = transformer([x, y]);
-
-            // Debug: log first point transformation
-            if (pointIndex === 0) {
-              console.log(`  Transformed to WGS84: lng=${lng}, lat=${lat}`);
-              console.log(`  Coordinate origin: [${coordinateOrigin[0]}, ${coordinateOrigin[1]}]`);
-              console.log(`  Offset from origin: deltaLng=${lng - coordinateOrigin[0]}, deltaLat=${lat - coordinateOrigin[1]}`);
-            }
 
             // Store as OFFSET from coordinateOrigin - these small values maintain Float32 precision
             positions[pointIndex * 3] = lng - coordinateOrigin[0];
@@ -468,14 +425,6 @@ export class PointCloudLoader {
     }
 
     this._reportProgress(92, 'Processing complete, preparing visualization...');
-
-    // Log sample positions for debugging (these are offsets now)
-    if (pointIndex > 0) {
-      console.log('Sample position offsets (first 3 points):');
-      for (let i = 0; i < Math.min(3, pointIndex); i++) {
-        console.log(`  Point ${i}: deltaLng=${positions[i*3]}, deltaLat=${positions[i*3+1]}, z=${positions[i*3+2]}`);
-      }
-    }
 
     return {
       positions: positions.subarray(0, pointIndex * 3),

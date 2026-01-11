@@ -55,15 +55,16 @@
   background: #fff;
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
-  min-width: 320px;
-  max-width: 480px;
+  width: 380px;
   max-height: 600px;
-  overflow-y: auto;
+  overflow: hidden;
   z-index: 1000;
   padding: 8px;
   font-size: 12px;
   line-height: 1.4;
   display: none;
+  box-sizing: border-box;
+  scrollbar-width: none;
 }
 
 /* Panel positioning based on parent control position */
@@ -123,7 +124,9 @@
 .lidar-control-content {
   max-height: 520px;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
+  scrollbar-width: none;
 }
 
 /* Sections */
@@ -329,6 +332,8 @@
 .lidar-pointclouds-list {
   max-height: 150px;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
 }
 
 .lidar-pointclouds-empty {
@@ -494,28 +499,11 @@
   gap: 8px;
 }
 
-/* Scrollbar styling */
+/* Scrollbar hiding */
 .lidar-control-content::-webkit-scrollbar,
 .lidar-pointclouds-list::-webkit-scrollbar,
 .lidar-control-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.lidar-control-content::-webkit-scrollbar-track,
-.lidar-pointclouds-list::-webkit-scrollbar-track,
-.lidar-control-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.lidar-control-content::-webkit-scrollbar-thumb,
-.lidar-pointclouds-list::-webkit-scrollbar-thumb,
-.lidar-control-panel::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
-}
-
-.lidar-control-content::-webkit-scrollbar-thumb:hover,
-.lidar-pointclouds-list::-webkit-scrollbar-thumb:hover,
-.lidar-control-panel::-webkit-scrollbar-thumb:hover {
-  background: #aaa;
+  width: 0;
+  height: 0;
+  display: none;
 }

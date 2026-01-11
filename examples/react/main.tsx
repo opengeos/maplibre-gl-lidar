@@ -185,7 +185,7 @@ function App() {
           map={map}
           title="LiDAR Viewer"
           collapsed={state.collapsed}
-          panelWidth={320}
+          panelWidth={330}
           pointSize={state.pointSize}
           opacity={state.opacity}
           colorScheme={state.colorScheme}
