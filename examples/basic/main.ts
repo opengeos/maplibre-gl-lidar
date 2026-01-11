@@ -6,8 +6,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // Create map with 3D terrain enabled
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://demotiles.maplibre.org/style.json',
-  center: [-122.8, 44.05], // Near Autzen Stadium, Oregon (sample data location)
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  center: [-123.06171, 44.0499], // Near Autzen Stadium, Oregon (sample data location)
   zoom: 14,
   pitch: 60,
   bearing: -17,

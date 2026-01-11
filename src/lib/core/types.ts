@@ -44,6 +44,8 @@ export interface PointCloudInfo {
   hasIntensity: boolean;
   hasClassification: boolean;
   source: string;
+  /** WKT string describing the coordinate reference system */
+  wkt?: string;
 }
 
 /**

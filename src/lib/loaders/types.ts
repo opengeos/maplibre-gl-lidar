@@ -5,12 +5,19 @@ import type { PointCloudBounds } from '../core/types';
  */
 export interface PointCloudData {
   /**
-   * Float32Array of XYZ positions (length = pointCount * 3)
+   * Float32Array of XYZ positions as offsets from coordinateOrigin (length = pointCount * 3)
+   * Format: [deltaLng, deltaLat, elevation] for each point
    */
   positions: Float32Array;
 
   /**
-   * Optional Uint8Array of RGB colors (length = pointCount * 3)
+   * Coordinate origin [lng, lat, 0] - positions are offsets from this point
+   * This allows Float32Array to maintain precision for geographic coordinates
+   */
+  coordinateOrigin: [number, number, number];
+
+  /**
+   * Optional Uint8Array of RGB colors (length = pointCount * 4, RGBA format)
    */
   colors?: Uint8Array;
 
@@ -30,7 +37,7 @@ export interface PointCloudData {
   pointCount: number;
 
   /**
-   * Bounding box of the point cloud
+   * Bounding box of the point cloud (in absolute coordinates, not offsets)
    */
   bounds: PointCloudBounds;
 
@@ -48,6 +55,11 @@ export interface PointCloudData {
    * Whether the point cloud has classification data
    */
   hasClassification: boolean;
+
+  /**
+   * WKT string describing the coordinate reference system
+   */
+  wkt?: string;
 }
 
 /**

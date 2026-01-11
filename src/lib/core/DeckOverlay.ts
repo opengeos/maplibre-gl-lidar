@@ -15,7 +15,7 @@ export class DeckOverlay {
     this._map = map;
     this._layers = new Map();
     this._overlay = new MapboxOverlay({
-      interleaved: true,
+      interleaved: false, // Use non-interleaved mode for better compatibility
       layers: [],
     });
     // Add the overlay as a control (compatible with MapLibre)
@@ -111,5 +111,7 @@ export class DeckOverlay {
     this._overlay.setProps({
       layers: Array.from(this._layers.values()),
     });
+    // Trigger a map repaint to ensure the deck overlay is rendered
+    this._map.triggerRepaint();
   }
 }

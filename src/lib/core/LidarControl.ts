@@ -21,7 +21,7 @@ const DEFAULT_OPTIONS: Required<LidarControlOptions> = {
   collapsed: true,
   position: 'top-right',
   title: 'LiDAR Viewer',
-  panelWidth: 320,
+  panelWidth: 360,
   className: '',
   pointSize: 2,
   opacity: 1.0,
@@ -276,12 +276,22 @@ export class LidarControl implements IControl {
     this.setState({ loading: true, error: null });
     this._emit('loadstart');
 
+    // Progress callback to update the UI
+    const onProgress = (progress: number, message: string) => {
+      this._panelBuilder?.updateLoadingProgress(progress, message);
+    };
+
     try {
-      // Load the point cloud
-      const data = await this._loader.load(source);
+      // Load the point cloud with progress reporting
+      const data = await this._loader.load(source, onProgress);
+
+      // Report final progress
+      onProgress(95, 'Creating visualization layers...');
 
       // Add to manager
       this._pointCloudManager?.addPointCloud(id, data);
+
+      onProgress(100, 'Complete!');
 
       // Create info object
       const info: PointCloudInfo = {
@@ -293,6 +303,7 @@ export class LidarControl implements IControl {
         hasIntensity: data.hasIntensity,
         hasClassification: data.hasClassification,
         source: typeof source === 'string' ? source : 'file',
+        wkt: data.wkt,
       };
 
       // Update state
@@ -432,6 +443,14 @@ export class LidarControl implements IControl {
 
     const bounds = this._pointCloudManager?.getPointCloudBounds(targetId);
     if (!bounds || !this._map) return;
+
+    // Bounds are already in WGS84 (transformed during loading if needed)
+    // Validate coordinates are in valid lat/lng range
+    if (Math.abs(bounds.minY) > 90 || Math.abs(bounds.maxY) > 90 ||
+        Math.abs(bounds.minX) > 180 || Math.abs(bounds.maxX) > 180) {
+      console.error('Cannot fly to point cloud: coordinates are not in WGS84 range');
+      return;
+    }
 
     // Fly to bounds
     this._map.fitBounds(

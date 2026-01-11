@@ -77,7 +77,11 @@ export class PanelBuilder {
 
     // Update loading state
     if (this._loadingIndicator) {
-      this._loadingIndicator.style.display = state.loading ? 'flex' : 'none';
+      if (state.loading) {
+        this._loadingIndicator.classList.add('active');
+      } else {
+        this._loadingIndicator.classList.remove('active');
+      }
     }
 
     // Update error message
@@ -111,6 +115,27 @@ export class PanelBuilder {
     this._fileInput?.setEnabled(enabled);
     if (this._urlInput) this._urlInput.disabled = !enabled;
     if (this._loadButton) this._loadButton.disabled = !enabled;
+  }
+
+  /**
+   * Updates the loading progress display.
+   *
+   * @param progress - Progress value (0-100)
+   * @param message - Optional progress message
+   */
+  updateLoadingProgress(progress: number, message?: string): void {
+    if (!this._loadingIndicator) return;
+
+    const progressBar = this._loadingIndicator.querySelector('.lidar-loading-bar-fill') as HTMLElement;
+    const progressText = this._loadingIndicator.querySelector('.lidar-loading-progress') as HTMLElement;
+
+    if (progressBar) {
+      progressBar.style.width = `${progress}%`;
+    }
+
+    if (progressText && message) {
+      progressText.textContent = message;
+    }
   }
 
   /**
@@ -418,10 +443,13 @@ export class PanelBuilder {
   private _buildLoadingIndicator(): HTMLElement {
     const loading = document.createElement('div');
     loading.className = 'lidar-loading';
-    loading.style.display = 'none';
     loading.innerHTML = `
       <div class="lidar-loading-spinner"></div>
-      <span>Loading point cloud...</span>
+      <div class="lidar-loading-text">Loading point cloud...</div>
+      <div class="lidar-loading-progress">Preparing...</div>
+      <div class="lidar-loading-bar">
+        <div class="lidar-loading-bar-fill"></div>
+      </div>
     `;
     this._loadingIndicator = loading;
     return loading;

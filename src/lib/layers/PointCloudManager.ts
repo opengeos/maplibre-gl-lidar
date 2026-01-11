@@ -13,6 +13,7 @@ interface ManagedPointCloud {
   id: string;
   data: PointCloudData;
   colors: Uint8Array;
+  coordinateOrigin: [number, number, number]; // [lng, lat, 0] center point
 }
 
 /**
@@ -40,11 +41,17 @@ export class PointCloudManager {
    * Adds a point cloud to the visualization.
    *
    * @param id - Unique identifier for the point cloud
-   * @param data - Point cloud data
+   * @param data - Point cloud data (positions are already offsets from coordinateOrigin)
    */
   addPointCloud(id: string, data: PointCloudData): void {
     const colors = this._colorProcessor.getColors(data, this._options.colorScheme);
-    this._pointClouds.set(id, { id, data, colors });
+
+    // Use the coordinate origin from the data - positions are already stored as offsets
+    const coordinateOrigin = data.coordinateOrigin;
+
+    console.log(`Point cloud coordinate origin: [${coordinateOrigin[0].toFixed(6)}, ${coordinateOrigin[1].toFixed(6)}]`);
+
+    this._pointClouds.set(id, { id, data, colors, coordinateOrigin });
     this._createLayer(id);
   }
 
@@ -54,8 +61,16 @@ export class PointCloudManager {
    * @param id - ID of the point cloud to remove
    */
   removePointCloud(id: string): void {
+    const pc = this._pointClouds.get(id);
+    if (pc) {
+      // Remove all chunk layers
+      const CHUNK_SIZE = 1000000;
+      const numChunks = Math.ceil(pc.data.pointCount / CHUNK_SIZE);
+      for (let chunk = 0; chunk < numChunks; chunk++) {
+        this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
+      }
+    }
     this._pointClouds.delete(id);
-    this._deckOverlay.removeLayer(`pointcloud-${id}`);
   }
 
   /**
@@ -102,7 +117,7 @@ export class PointCloudManager {
     if (colorSchemeChanged) {
       for (const [id, pc] of this._pointClouds) {
         const colors = this._colorProcessor.getColors(pc.data, this._options.colorScheme);
-        this._pointClouds.set(id, { ...pc, colors });
+        this._pointClouds.set(id, { ...pc, colors, coordinateOrigin: pc.coordinateOrigin });
       }
     }
 
@@ -150,8 +165,13 @@ export class PointCloudManager {
    * Clears all point clouds.
    */
   clear(): void {
-    for (const id of this._pointClouds.keys()) {
-      this._deckOverlay.removeLayer(`pointcloud-${id}`);
+    for (const [id, pc] of this._pointClouds) {
+      // Remove all chunk layers
+      const CHUNK_SIZE = 1000000;
+      const numChunks = Math.ceil(pc.data.pointCount / CHUNK_SIZE);
+      for (let chunk = 0; chunk < numChunks; chunk++) {
+        this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
+      }
     }
     this._pointClouds.clear();
   }
@@ -165,35 +185,70 @@ export class PointCloudManager {
 
   /**
    * Creates a deck.gl layer for a point cloud.
+   * Chunks large point clouds into multiple layers to avoid WebGL buffer limits.
+   * Uses coordinateOrigin + LNGLAT_OFFSETS to maintain Float32 precision.
    */
   private _createLayer(id: string): void {
     const pc = this._pointClouds.get(id);
     if (!pc) return;
 
-    const { data, colors } = pc;
+    const { data, colors, coordinateOrigin } = pc;
 
-    // Build layer props
-    const layerProps: ConstructorParameters<typeof PointCloudLayer>[0] = {
-      id: `pointcloud-${id}`,
-      data: {
-        length: data.pointCount,
-        attributes: {
-          getPosition: { value: data.positions, size: 3 },
-          getColor: { value: colors, size: 4 },
+    console.log(`Creating PointCloudLayer for ${data.pointCount.toLocaleString()} points`);
+    console.log(`Using coordinate origin: [${coordinateOrigin[0].toFixed(6)}, ${coordinateOrigin[1].toFixed(6)}]`);
+
+    // Chunk size - 1 million points per layer to stay within WebGL limits
+    const CHUNK_SIZE = 1000000;
+    const numChunks = Math.ceil(data.pointCount / CHUNK_SIZE);
+
+    console.log(`Splitting into ${numChunks} chunks of up to ${CHUNK_SIZE.toLocaleString()} points each`);
+
+    for (let chunk = 0; chunk < numChunks; chunk++) {
+      const startIdx = chunk * CHUNK_SIZE;
+      const endIdx = Math.min(startIdx + CHUNK_SIZE, data.pointCount);
+      const chunkSize = endIdx - startIdx;
+
+      // Create arrays for this chunk - positions are ALREADY offsets from coordinateOrigin
+      // (computed during loading to maintain Float32 precision)
+      const chunkPositions = new Float32Array(chunkSize * 3);
+      const chunkColors = new Uint8Array(chunkSize * 4);
+
+      for (let i = 0; i < chunkSize; i++) {
+        const srcIdx = startIdx + i;
+        // Positions are already offsets - just copy them
+        chunkPositions[i * 3] = data.positions[srcIdx * 3];         // delta lng
+        chunkPositions[i * 3 + 1] = data.positions[srcIdx * 3 + 1]; // delta lat
+        chunkPositions[i * 3 + 2] = data.positions[srcIdx * 3 + 2]; // elevation in meters
+
+        // Copy colors (keep as Uint8)
+        chunkColors[i * 4] = colors[srcIdx * 4];
+        chunkColors[i * 4 + 1] = colors[srcIdx * 4 + 1];
+        chunkColors[i * 4 + 2] = colors[srcIdx * 4 + 2];
+        chunkColors[i * 4 + 3] = colors[srcIdx * 4 + 3];
+      }
+
+      const layer = new PointCloudLayer({
+        id: `pointcloud-${id}-chunk${chunk}`,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
+        coordinateOrigin: coordinateOrigin,
+        data: {
+          length: chunkSize,
+          attributes: {
+            getPosition: { value: chunkPositions, size: 3 },
+            getColor: { value: chunkColors, size: 4 },
+          },
         },
-      },
-      pointSize: this._options.pointSize,
-      opacity: this._options.opacity,
-      coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-      getNormal: [0, 0, 1],
-      pickable: true,
-      // parameters: {
-      //   depthTest: true,
-      // },
-    };
+        pointSize: this._options.pointSize,
+        sizeUnits: 'pixels',
+        opacity: this._options.opacity,
+        getNormal: [0, 0, 1],
+        pickable: false,
+      });
 
-    const layer = new PointCloudLayer(layerProps);
-    this._deckOverlay.addLayer(`pointcloud-${id}`, layer);
+      this._deckOverlay.addLayer(`pointcloud-${id}-chunk${chunk}`, layer);
+    }
+
+    console.log(`Created ${numChunks} PointCloudLayers for point cloud ${id}`);
   }
 
   /**

@@ -88,8 +88,10 @@
     "@deck.gl/extensions": "^9.0.0",
     "@deck.gl/layers": "^9.0.0",
     "@deck.gl/mapbox": "^9.0.0",
-    "@loaders.gl/core": "^4.2.0",
-    "@loaders.gl/las": "^4.2.0"
+    "@types/proj4": "^2.5.6",
+    "copc": "^0.0.8",
+    "loaders.gl": "github:visgl/loaders.gl#master",
+    "proj4": "^2.20.2"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",
