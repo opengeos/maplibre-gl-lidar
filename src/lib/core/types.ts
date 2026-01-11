@@ -265,6 +265,11 @@ export interface LidarControlReactProps extends LidarControlOptions {
   map: Map;
 
   /**
+   * URL to load automatically when the control is added to the map
+   */
+  defaultUrl?: string;
+
+  /**
    * Callback fired when the control state changes
    */
   onStateChange?: (state: LidarState) => void;

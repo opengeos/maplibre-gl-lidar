@@ -43,6 +43,9 @@ map.on('load', () => {
   // Add control to the map
   map.addControl(lidarControl, 'top-right');
 
+  // Load a point cloud programmatically
+  lidarControl.loadPointCloud('https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz');
+
   // Listen for point cloud load events
   lidarControl.on('load', (event) => {
     console.log('Point cloud loaded:', event.pointCloud);
