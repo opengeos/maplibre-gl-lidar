@@ -1,7 +1,9 @@
 import maplibregl from 'maplibre-gl';
-import { LidarControl } from '../../src/index';
+import { LidarControl, LidarLayerAdapter } from '../../src/index';
+import { LayerControl } from 'maplibre-gl-layer-control';
 import '../../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import 'maplibre-gl-layer-control/style.css';
 
 // Create map with 3D terrain enabled
 const map = new maplibregl.Map({
@@ -31,7 +33,7 @@ map.on('load', () => {
   const lidarControl = new LidarControl({
     title: 'LiDAR Viewer',
     collapsed: true, // Start with just the 29x29 button visible
-    panelWidth: 320,
+    panelWidth: 360,
     pointSize: 2,
     opacity: 1.0,
     colorScheme: 'elevation',
@@ -39,6 +41,17 @@ map.on('load', () => {
     // streamingPointBudget: 5_000_000  // Max points in memory for streaming mode
     // panelMaxHeight: 600,
   });
+
+  // Create layer adapter for the layer control
+  const lidarAdapter = new LidarLayerAdapter(lidarControl);
+
+  // Add layer control with the lidar adapter
+  const layerControl = new LayerControl({
+    collapsed: true,
+    customLayerAdapters: [lidarAdapter],
+    showStyleEditor: true, // Style editor doesn't work with custom layers
+  });
+  map.addControl(layerControl, 'top-left');
 
   // Add control to the map
   map.addControl(lidarControl, 'top-right');

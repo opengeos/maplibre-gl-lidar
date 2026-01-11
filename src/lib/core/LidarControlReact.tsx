@@ -40,6 +40,7 @@ export function LidarControlReact({
   onStateChange,
   onLoad,
   onError,
+  onControlReady,
   ...options
 }: LidarControlReactProps): null {
   const controlRef = useRef<LidarControl | null>(null);
@@ -76,6 +77,11 @@ export function LidarControlReact({
 
     // Add control to map
     map.addControl(control, options.position || 'top-right');
+
+    // Notify that control is ready
+    if (onControlReady) {
+      onControlReady(control);
+    }
 
     // Load default URL if provided
     if (defaultUrl) {

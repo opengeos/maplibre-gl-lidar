@@ -15,6 +15,10 @@ interface ManagedPointCloud {
   data: PointCloudData;
   colors: Uint8Array;
   coordinateOrigin: [number, number, number]; // [lng, lat, 0] center point
+  /** Per-layer visibility (default: true) */
+  visible: boolean;
+  /** Per-layer opacity override (null means use global) */
+  opacityOverride: number | null;
 }
 
 /**
@@ -66,7 +70,14 @@ export class PointCloudManager {
     // Use the coordinate origin from the data - positions are already stored as offsets
     const coordinateOrigin = data.coordinateOrigin;
 
-    this._pointClouds.set(id, { id, data, colors, coordinateOrigin });
+    this._pointClouds.set(id, {
+      id,
+      data,
+      colors,
+      coordinateOrigin,
+      visible: true,
+      opacityOverride: null,
+    });
     this._createLayer(id);
   }
 
@@ -97,6 +108,8 @@ export class PointCloudManager {
         data,
         colors,
         coordinateOrigin: data.coordinateOrigin,
+        visible: existing.visible,
+        opacityOverride: existing.opacityOverride,
       });
 
       // Recreate layers with new data
@@ -185,7 +198,13 @@ export class PointCloudManager {
           usePercentile: this._options.usePercentile,
           hiddenClassifications: this._options.hiddenClassifications,
         });
-        this._pointClouds.set(id, { ...pc, colors, coordinateOrigin: pc.coordinateOrigin });
+        this._pointClouds.set(id, {
+          ...pc,
+          colors,
+          coordinateOrigin: pc.coordinateOrigin,
+          visible: pc.visible,
+          opacityOverride: pc.opacityOverride,
+        });
       }
     }
 
@@ -266,6 +285,56 @@ export class PointCloudManager {
   }
 
   /**
+   * Sets visibility for a specific point cloud.
+   *
+   * @param id - Point cloud ID
+   * @param visible - Whether the point cloud should be visible
+   */
+  setPointCloudVisibility(id: string, visible: boolean): void {
+    const pc = this._pointClouds.get(id);
+    if (pc) {
+      this._pointClouds.set(id, { ...pc, visible });
+      this._createLayer(id);
+    }
+  }
+
+  /**
+   * Gets visibility for a specific point cloud.
+   *
+   * @param id - Point cloud ID
+   * @returns Whether the point cloud is visible, or undefined if not found
+   */
+  getPointCloudVisibility(id: string): boolean | undefined {
+    return this._pointClouds.get(id)?.visible;
+  }
+
+  /**
+   * Sets opacity for a specific point cloud.
+   *
+   * @param id - Point cloud ID
+   * @param opacity - Opacity value (0-1), or null to use global opacity
+   */
+  setPointCloudOpacity(id: string, opacity: number | null): void {
+    const pc = this._pointClouds.get(id);
+    if (pc) {
+      this._pointClouds.set(id, { ...pc, opacityOverride: opacity });
+      this._createLayer(id);
+    }
+  }
+
+  /**
+   * Gets opacity for a specific point cloud.
+   *
+   * @param id - Point cloud ID
+   * @returns Opacity value (0-1), or undefined if not found
+   */
+  getPointCloudOpacity(id: string): number | undefined {
+    const pc = this._pointClouds.get(id);
+    if (!pc) return undefined;
+    return pc.opacityOverride ?? this._options.opacity;
+  }
+
+  /**
    * Clears all point clouds.
    */
   clear(): void {
@@ -297,14 +366,20 @@ export class PointCloudManager {
     const pc = this._pointClouds.get(id);
     if (!pc) return;
 
-    const { data, colors, coordinateOrigin } = pc;
+    const { data, colors, coordinateOrigin, visible, opacityOverride } = pc;
     const elevationRange = this._options.elevationRange;
     const zOffset = this._options.zOffset ?? 0;
+    const layerOpacity = opacityOverride ?? this._options.opacity;
 
     // Remove existing chunk layers first (use a generous upper bound)
     const maxPossibleChunks = Math.ceil(data.pointCount / 1000000) + 1;
     for (let chunk = 0; chunk < maxPossibleChunks; chunk++) {
       this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
+    }
+
+    // If layer is not visible, don't create any layers
+    if (!visible) {
+      return;
     }
 
     // Build filtered indices list
@@ -417,7 +492,7 @@ export class PointCloudManager {
         },
         pointSize: this._options.pointSize,
         sizeUnits: 'pixels',
-        opacity: this._options.opacity,
+        opacity: layerOpacity,
         getNormal: [0, 0, 1],
         pickable: this._options.pickable,
         onHover: this._options.pickable ? handleHover : undefined,

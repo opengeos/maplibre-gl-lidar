@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import maplibregl, { Map } from 'maplibre-gl';
-import { LidarControlReact, useLidarState } from '../../src/react';
-import type { PointCloudInfo, LidarState } from '../../src/react';
+import { LidarControlReact, useLidarState, LidarLayerAdapter } from '../../src/react';
+import type { PointCloudInfo, LidarState, LidarControl } from '../../src/react';
+import { LayerControl } from 'maplibre-gl-layer-control';
 import '../../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import 'maplibre-gl-layer-control/style.css';
 
 /**
  * Main App component demonstrating the React integration
@@ -12,6 +14,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<Map | null>(null);
+  const layerControlRef = useRef<LayerControl | null>(null);
   const {
     state,
     toggle,
@@ -49,9 +52,30 @@ function App() {
     });
 
     return () => {
+      // Clean up layer control
+      if (layerControlRef.current && mapInstance.hasControl(layerControlRef.current)) {
+        mapInstance.removeControl(layerControlRef.current);
+      }
       mapInstance.remove();
     };
   }, []);
+
+  // Handle when LidarControl is ready - create and add LayerControl
+  const handleControlReady = useCallback((control: LidarControl) => {
+    if (!map) return;
+
+    // Create adapter for the layer control
+    const lidarAdapter = new LidarLayerAdapter(control);
+
+    // Create and add layer control
+    const layerControl = new LayerControl({
+      collapsed: true,
+      customLayerAdapters: [lidarAdapter],
+      showStyleEditor: false, // Style editor doesn't work with custom layers
+    });
+    layerControlRef.current = layerControl;
+    map.addControl(layerControl, 'bottom-left');
+  }, [map]);
 
   const handleStateChange = (newState: LidarState) => {
     console.log('LiDAR state changed:', newState);
@@ -193,6 +217,7 @@ function App() {
           onStateChange={handleStateChange}
           onLoad={handleLoad}
           onError={handleError}
+          onControlReady={handleControlReady}
           defaultUrl="https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz"
         />
       )}
