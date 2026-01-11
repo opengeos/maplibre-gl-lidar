@@ -4,12 +4,14 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 
 ## Features
 
-- Load and visualize LAS/LAZ/COPC point cloud files
+- Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
 - Multiple color schemes: elevation, intensity, classification, RGB
 - Interactive GUI control panel
+- **Point picking** - hover over points to see coordinates, elevation, intensity, and classification
+- Automatic coordinate transformation (projected CRS to WGS84)
 - Programmatic API for loading and styling
 - React integration with hooks
-- deck.gl PointCloudLayer under the hood
+- deck.gl PointCloudLayer with optimized chunking for large datasets
 - TypeScript support
 
 ## Installation
@@ -30,7 +32,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://demotiles.maplibre.org/style.json',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
   center: [-122.4, 37.8],
   zoom: 12,
   pitch: 60,
@@ -43,6 +45,7 @@ map.on('load', () => {
     collapsed: true,
     pointSize: 2,
     colorScheme: 'elevation',
+    pickable: true, // Enable point picking for hover tooltips
   });
 
   map.addControl(lidarControl, 'top-right');
@@ -54,7 +57,7 @@ map.on('load', () => {
   });
 
   // Load a point cloud programmatically
-  lidarControl.loadPointCloud('https://example.com/pointcloud.laz');
+  lidarControl.loadPointCloud('https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz');
 });
 ```
 
@@ -77,7 +80,7 @@ function App() {
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://demotiles.maplibre.org/style.json',
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
       center: [-122.4, 37.8],
       zoom: 12,
       pitch: 60,
@@ -118,13 +121,14 @@ interface LidarControlOptions {
   collapsed?: boolean;        // Start collapsed (default: true)
   position?: string;          // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   title?: string;             // Panel title (default: 'LiDAR Viewer')
-  panelWidth?: number;        // Panel width in pixels (default: 320)
+  panelWidth?: number;        // Panel width in pixels (default: 380)
   className?: string;         // Custom CSS class
   pointSize?: number;         // Point size in pixels (default: 2)
   opacity?: number;           // Opacity 0-1 (default: 1.0)
   colorScheme?: ColorScheme;  // Color scheme (default: 'elevation')
   pointBudget?: number;       // Max points to display (default: 1000000)
   elevationRange?: [number, number] | null;  // Elevation filter
+  pickable?: boolean;         // Enable point picking/hover tooltips (default: false)
 }
 ```
 
@@ -143,6 +147,7 @@ setOpacity(opacity: number): void
 setColorScheme(scheme: ColorScheme): void
 setElevationRange(min: number, max: number): void
 clearElevationRange(): void
+setPickable(pickable: boolean): void
 
 // Panel control
 toggle(): void
@@ -175,6 +180,25 @@ getMap(): MapLibreMap | undefined
 - `'intensity'` - Grayscale based on intensity attribute
 - `'classification'` - ASPRS standard classification colors
 - `'rgb'` - Use embedded RGB colors (if available)
+
+### Point Picking
+
+When `pickable` is enabled, hovering over points displays a tooltip with:
+
+- **Coordinates** - Longitude and latitude
+- **Elevation** - Height in meters
+- **Intensity** - Reflectance value (if available)
+- **Classification** - ASPRS class name (Ground, Building, Vegetation, etc.)
+
+Enable via constructor option or toggle in the GUI panel:
+
+```typescript
+// Via constructor
+const control = new LidarControl({ pickable: true });
+
+// Or programmatically
+control.setPickable(true);
+```
 
 ### React Hooks
 
@@ -209,10 +233,20 @@ console.log(`Loaded ${data.pointCount} points`);
 - LAZ (compressed LAS)
 - COPC (Cloud Optimized Point Cloud)
 
+## Coordinate Systems
+
+Point clouds are automatically transformed to WGS84 (EPSG:4326) for display on the map. The loader reads the WKT coordinate reference system from the file and uses proj4 to transform coordinates. Supported features:
+
+- Projected coordinate systems (State Plane, UTM, etc.)
+- Compound coordinate systems (horizontal + vertical)
+- Automatic unit conversion (feet to meters for elevation)
+
 ## Dependencies
 
 - [deck.gl](https://deck.gl/) - WebGL visualization layers
-- [loaders.gl](https://loaders.gl/) - LAS/LAZ parsing
+- [copc.js](https://github.com/connormanning/copc.js) - COPC/LAS/LAZ parsing (supports LAS 1.4)
+- [laz-perf](https://github.com/hobu/laz-perf) - LAZ decompression
+- [proj4](http://proj4js.org/) - Coordinate transformation
 - [maplibre-gl](https://maplibre.org/) - Map rendering
 
 ## License
