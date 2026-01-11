@@ -1,6 +1,7 @@
 import type { LidarState, ColorScheme, PointCloudInfo } from '../core/types';
 import { FileInput } from './FileInput';
 import { RangeSlider } from './RangeSlider';
+import { DualRangeSlider } from './DualRangeSlider';
 import { formatNumber } from '../utils/helpers';
 
 /**
@@ -34,6 +35,9 @@ export class PanelBuilder {
   private _opacitySlider?: RangeSlider;
   private _pointCloudsList?: HTMLElement;
   private _pickableCheckbox?: HTMLInputElement;
+  private _elevationSlider?: DualRangeSlider;
+  private _elevationSliderContainer?: HTMLElement;
+  private _elevationCheckbox?: HTMLInputElement;
   private _loadingIndicator?: HTMLElement;
   private _errorMessage?: HTMLElement;
 
@@ -115,6 +119,16 @@ export class PanelBuilder {
     // Update pickable checkbox
     if (this._pickableCheckbox) {
       this._pickableCheckbox.checked = state.pickable ?? false;
+    }
+
+    // Update elevation slider bounds when point clouds change
+    if (this._elevationSlider && state.pointClouds.length > 0) {
+      const bounds = this._getElevationBounds();
+      this._elevationSlider.setBounds(bounds.min, bounds.max);
+      // If filter is not active, reset range to full bounds
+      if (!this._elevationCheckbox?.checked) {
+        this._elevationSlider.setRange(bounds.min, bounds.max);
+      }
     }
 
     // Disable/enable inputs during loading
@@ -277,22 +291,26 @@ export class PanelBuilder {
   }
 
   /**
-   * Builds the elevation filter controls.
+   * Builds the elevation filter controls with checkbox and dual slider.
    */
   private _buildElevationFilter(): HTMLElement {
     const group = document.createElement('div');
     group.className = 'lidar-control-group';
 
+    // Checkbox row
     const labelRow = document.createElement('div');
     labelRow.className = 'lidar-control-label-row';
     labelRow.style.cursor = 'pointer';
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
+    checkbox.id = 'lidar-elevation-filter-checkbox';
     checkbox.style.marginRight = '6px';
+    this._elevationCheckbox = checkbox;
 
     const label = document.createElement('label');
     label.className = 'lidar-control-label';
+    label.htmlFor = 'lidar-elevation-filter-checkbox';
     label.style.display = 'inline';
     label.style.cursor = 'pointer';
     label.textContent = 'Elevation Filter';
@@ -301,59 +319,76 @@ export class PanelBuilder {
     labelRow.appendChild(label);
     group.appendChild(labelRow);
 
-    // Range inputs (hidden by default)
-    const rangeRow = document.createElement('div');
-    rangeRow.className = 'lidar-control-flex';
-    rangeRow.style.display = 'none';
-    rangeRow.style.marginTop = '8px';
+    // Slider container (hidden by default)
+    const sliderContainer = document.createElement('div');
+    sliderContainer.style.display = 'none';
+    sliderContainer.style.marginTop = '8px';
+    this._elevationSliderContainer = sliderContainer;
 
-    const minInput = document.createElement('input');
-    minInput.type = 'number';
-    minInput.className = 'lidar-control-input';
-    minInput.placeholder = 'Min';
-    minInput.style.flex = '1';
+    // Get elevation bounds from loaded point clouds
+    const bounds = this._getElevationBounds();
 
-    const toSpan = document.createElement('span');
-    toSpan.textContent = 'to';
-    toSpan.style.padding = '0 8px';
-    toSpan.style.alignSelf = 'center';
+    // Create dual range slider
+    this._elevationSlider = new DualRangeSlider({
+      label: 'Range (m)',
+      min: bounds.min,
+      max: bounds.max,
+      step: 1,
+      valueLow: bounds.min,
+      valueHigh: bounds.max,
+      onChange: (low, high) => {
+        if (checkbox.checked) {
+          this._callbacks.onElevationRangeChange([low, high]);
+        }
+      },
+      formatValue: (v) => v.toFixed(0),
+    });
 
-    const maxInput = document.createElement('input');
-    maxInput.type = 'number';
-    maxInput.className = 'lidar-control-input';
-    maxInput.placeholder = 'Max';
-    maxInput.style.flex = '1';
+    sliderContainer.appendChild(this._elevationSlider.render());
+    group.appendChild(sliderContainer);
 
-    const applyBtn = document.createElement('button');
-    applyBtn.type = 'button';
-    applyBtn.className = 'lidar-control-button';
-    applyBtn.textContent = 'Apply';
-    applyBtn.style.marginLeft = '8px';
-
-    rangeRow.appendChild(minInput);
-    rangeRow.appendChild(toSpan);
-    rangeRow.appendChild(maxInput);
-    rangeRow.appendChild(applyBtn);
-    group.appendChild(rangeRow);
-
-    // Toggle visibility
+    // Toggle visibility and filter
     checkbox.addEventListener('change', () => {
-      rangeRow.style.display = checkbox.checked ? 'flex' : 'none';
-      if (!checkbox.checked) {
+      sliderContainer.style.display = checkbox.checked ? 'block' : 'none';
+      if (checkbox.checked) {
+        // Update bounds when enabling filter
+        const newBounds = this._getElevationBounds();
+        this._elevationSlider?.setBounds(newBounds.min, newBounds.max);
+        this._elevationSlider?.setRange(newBounds.min, newBounds.max);
+        // Apply current range
+        const range = this._elevationSlider?.getRange();
+        if (range) {
+          this._callbacks.onElevationRangeChange(range);
+        }
+      } else {
         this._callbacks.onElevationRangeChange(null);
       }
     });
 
-    // Apply filter
-    applyBtn.addEventListener('click', () => {
-      const min = parseFloat(minInput.value);
-      const max = parseFloat(maxInput.value);
-      if (!isNaN(min) && !isNaN(max)) {
-        this._callbacks.onElevationRangeChange([min, max]);
-      }
-    });
-
     return group;
+  }
+
+  /**
+   * Gets the elevation bounds from loaded point clouds.
+   */
+  private _getElevationBounds(): { min: number; max: number } {
+    if (this._state.pointClouds.length === 0) {
+      return { min: 0, max: 100 };
+    }
+
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+
+    for (const pc of this._state.pointClouds) {
+      minZ = Math.min(minZ, pc.bounds.minZ);
+      maxZ = Math.max(maxZ, pc.bounds.maxZ);
+    }
+
+    // Round to nice values
+    minZ = Math.floor(minZ);
+    maxZ = Math.ceil(maxZ);
+
+    return { min: minZ, max: maxZ };
   }
 
   /**

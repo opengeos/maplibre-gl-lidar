@@ -206,35 +206,58 @@ export class PointCloudManager {
    * Creates a deck.gl layer for a point cloud.
    * Chunks large point clouds into multiple layers to avoid WebGL buffer limits.
    * Uses coordinateOrigin + LNGLAT_OFFSETS to maintain Float32 precision.
+   * Applies elevation filter if set.
    */
   private _createLayer(id: string): void {
     const pc = this._pointClouds.get(id);
     if (!pc) return;
 
     const { data, colors, coordinateOrigin } = pc;
+    const elevationRange = this._options.elevationRange;
+
+    // Remove existing chunk layers first (use a generous upper bound)
+    const maxPossibleChunks = Math.ceil(data.pointCount / 1000000) + 1;
+    for (let chunk = 0; chunk < maxPossibleChunks; chunk++) {
+      this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
+    }
+
+    // Build filtered indices list
+    const filteredIndices: number[] = [];
+
+    for (let i = 0; i < data.pointCount; i++) {
+      const elevation = data.positions[i * 3 + 2];
+      if (elevationRange === null ||
+          (elevation >= elevationRange[0] && elevation <= elevationRange[1])) {
+        filteredIndices.push(i);
+      }
+    }
+
+    // If no points pass the filter, don't create any layers
+    if (filteredIndices.length === 0) {
+      return;
+    }
 
     // Chunk size - 1 million points per layer to stay within WebGL limits
     const CHUNK_SIZE = 1000000;
-    const numChunks = Math.ceil(data.pointCount / CHUNK_SIZE);
+    const numChunks = Math.ceil(filteredIndices.length / CHUNK_SIZE);
 
     for (let chunk = 0; chunk < numChunks; chunk++) {
-      const startIdx = chunk * CHUNK_SIZE;
-      const endIdx = Math.min(startIdx + CHUNK_SIZE, data.pointCount);
-      const chunkSize = endIdx - startIdx;
+      const chunkStart = chunk * CHUNK_SIZE;
+      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, filteredIndices.length);
+      const chunkSize = chunkEnd - chunkStart;
 
-      // Create arrays for this chunk - positions are ALREADY offsets from coordinateOrigin
-      // (computed during loading to maintain Float32 precision)
       const chunkPositions = new Float32Array(chunkSize * 3);
       const chunkColors = new Uint8Array(chunkSize * 4);
+      const originalIndices: number[] = [];
 
       for (let i = 0; i < chunkSize; i++) {
-        const srcIdx = startIdx + i;
-        // Positions are already offsets - just copy them
-        chunkPositions[i * 3] = data.positions[srcIdx * 3];         // delta lng
-        chunkPositions[i * 3 + 1] = data.positions[srcIdx * 3 + 1]; // delta lat
-        chunkPositions[i * 3 + 2] = data.positions[srcIdx * 3 + 2]; // elevation in meters
+        const srcIdx = filteredIndices[chunkStart + i];
+        originalIndices.push(srcIdx);
 
-        // Copy colors (keep as Uint8)
+        chunkPositions[i * 3] = data.positions[srcIdx * 3];
+        chunkPositions[i * 3 + 1] = data.positions[srcIdx * 3 + 1];
+        chunkPositions[i * 3 + 2] = data.positions[srcIdx * 3 + 2];
+
         chunkColors[i * 4] = colors[srcIdx * 4];
         chunkColors[i * 4 + 1] = colors[srcIdx * 4 + 1];
         chunkColors[i * 4 + 2] = colors[srcIdx * 4 + 2];
@@ -245,10 +268,10 @@ export class PointCloudManager {
       const handleHover = (info: PickingInfo) => {
         if (!this._options.onHover) return;
 
-        if (info.index >= 0 && info.picked) {
-          const globalIndex = startIdx + info.index;
+        if (info.index >= 0 && info.picked && info.index < originalIndices.length) {
+          const originalIndex = originalIndices[info.index];
           const pointInfo: PickedPointInfo = {
-            index: globalIndex,
+            index: originalIndex,
             longitude: coordinateOrigin[0] + chunkPositions[info.index * 3],
             latitude: coordinateOrigin[1] + chunkPositions[info.index * 3 + 1],
             elevation: chunkPositions[info.index * 3 + 2],
@@ -256,14 +279,12 @@ export class PointCloudManager {
             y: info.y,
           };
 
-          // Add intensity if available
           if (data.intensities) {
-            pointInfo.intensity = data.intensities[globalIndex];
+            pointInfo.intensity = data.intensities[originalIndex];
           }
 
-          // Add classification if available
           if (data.classifications) {
-            pointInfo.classification = data.classifications[globalIndex];
+            pointInfo.classification = data.classifications[originalIndex];
           }
 
           this._options.onHover(pointInfo);
@@ -271,6 +292,9 @@ export class PointCloudManager {
           this._options.onHover(null);
         }
       };
+
+      // Create a unique data fingerprint to force deck.gl to update
+      const elevationKey = elevationRange ? `${elevationRange[0]}-${elevationRange[1]}` : 'none';
 
       const layer = new PointCloudLayer({
         id: `pointcloud-${id}-chunk${chunk}`,
@@ -291,6 +315,11 @@ export class PointCloudManager {
         onHover: this._options.pickable ? handleHover : undefined,
         autoHighlight: this._options.pickable,
         highlightColor: [255, 255, 0, 200],
+        // Force update when these values change
+        updateTriggers: {
+          getPosition: [elevationKey, chunkSize],
+          getColor: [elevationKey, chunkSize],
+        },
       });
 
       this._deckOverlay.addLayer(`pointcloud-${id}-chunk${chunk}`, layer);

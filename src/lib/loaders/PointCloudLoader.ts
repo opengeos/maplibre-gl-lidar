@@ -181,8 +181,8 @@ export class PointCloudLoader {
     this._reportProgress(15, 'Loading hierarchy...');
     await this._yieldToUI();
 
-    // Load the full hierarchy (all pages recursively)
-    const hierarchy = await Copc.loadHierarchy(url, copc.info);
+    // Load the full hierarchy using URL as source
+    const hierarchy = await this._loadFullHierarchy(url, copc.info);
 
     return await this._processCopcData(url, copc, hierarchy, lazPerf);
   }
@@ -217,15 +217,17 @@ export class PointCloudLoader {
 
   /**
    * Recursively loads all hierarchy pages from a COPC file.
+   * @param source - URL string or Getter function
+   * @param info - COPC info containing root hierarchy page
    */
   private async _loadFullHierarchy(
-    getter: Getter,
+    source: string | Getter,
     info: { rootHierarchyPage: Hierarchy.Page }
   ): Promise<Hierarchy.Subtree> {
     const allNodes: Record<string, Hierarchy.Node> = {};
 
     const loadPage = async (page: Hierarchy.Page): Promise<void> => {
-      const subtree = await Hierarchy.load(getter, page);
+      const subtree = await Hierarchy.load(source, page);
 
       // Add all nodes from this page
       for (const [key, node] of Object.entries(subtree.nodes)) {
