@@ -36,12 +36,11 @@ export class PanelBuilder {
   private _pointCloudsList?: HTMLElement;
   private _pickableCheckbox?: HTMLInputElement;
   private _elevationSlider?: DualRangeSlider;
-  private _elevationSliderContainer?: HTMLElement;
   private _elevationCheckbox?: HTMLInputElement;
   private _loadingIndicator?: HTMLElement;
   private _errorMessage?: HTMLElement;
 
-  constructor(_container: HTMLElement, callbacks: PanelBuilderCallbacks, initialState: LidarState) {
+  constructor(callbacks: PanelBuilderCallbacks, initialState: LidarState) {
     this._callbacks = callbacks;
     this._state = initialState;
   }
@@ -323,7 +322,6 @@ export class PanelBuilder {
     const sliderContainer = document.createElement('div');
     sliderContainer.style.display = 'none';
     sliderContainer.style.marginTop = '8px';
-    this._elevationSliderContainer = sliderContainer;
 
     // Get elevation bounds from loaded point clouds
     const bounds = this._getElevationBounds();

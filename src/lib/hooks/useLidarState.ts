@@ -14,6 +14,7 @@ const DEFAULT_STATE: LidarState = {
   colorScheme: 'elevation',
   elevationRange: null,
   pointBudget: 1000000,
+  pickable: false,
   loading: false,
   error: null,
 };

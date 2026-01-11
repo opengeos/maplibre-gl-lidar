@@ -594,7 +594,6 @@ export class LidarControl implements IControl {
 
     // Create content area using PanelBuilder
     this._panelBuilder = new PanelBuilder(
-      panel,
       {
         onFileSelect: (file) => this.loadPointCloud(file),
         onUrlSubmit: (url) => this.loadPointCloud(url),
