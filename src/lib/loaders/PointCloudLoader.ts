@@ -240,7 +240,21 @@ export class PointCloudLoader {
     await this._yieldToUI();
 
     // Parse COPC header and metadata
-    const copc = await Copc.create(url);
+    let copc;
+    try {
+      copc = await Copc.create(url);
+    } catch (error) {
+      // Check if this is likely a CORS error
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error(
+          `Failed to fetch from URL. This is likely a CORS (Cross-Origin Resource Sharing) error. ` +
+          `The server at "${new URL(url).hostname}" doesn't allow requests from this origin. ` +
+          `Solutions: (1) Download the file locally and load it as a file, ` +
+          `(2) Use a CORS proxy, or (3) Host the file on a CORS-enabled server.`
+        );
+      }
+      throw error;
+    }
 
     this._reportProgress(15, 'Loading hierarchy...');
     await this._yieldToUI();

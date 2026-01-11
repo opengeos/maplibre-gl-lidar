@@ -22,7 +22,7 @@ import { generateId, getFilename } from '../utils/helpers';
 /**
  * Default options for the LidarControl
  */
-const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & Pick<LidarControlOptions, 'pickInfoFields'> = {
+const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'copcLoadingMode'>> & Pick<LidarControlOptions, 'pickInfoFields' | 'copcLoadingMode'> = {
   collapsed: true,
   position: 'top-right',
   title: 'LiDAR Viewer',
@@ -39,7 +39,7 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & P
   pickInfoFields: undefined, // Show all fields by default
   zOffsetEnabled: false,
   zOffset: 0,
-  copcLoadingMode: 'full',
+  copcLoadingMode: undefined, // Auto-detect: 'dynamic' for COPC URLs, 'full' otherwise
   streamingPointBudget: 5_000_000,
   streamingMaxConcurrentRequests: 4,
   streamingViewportDebounceMs: 150,
@@ -71,7 +71,7 @@ export class LidarControl implements IControl {
   private _map?: MapLibreMap;
   private _container?: HTMLElement;
   private _panel?: HTMLElement;
-  private _options: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & Pick<LidarControlOptions, 'pickInfoFields'>;
+  private _options: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'copcLoadingMode'>> & Pick<LidarControlOptions, 'pickInfoFields' | 'copcLoadingMode'>;
   private _state: LidarState;
   private _eventHandlers: EventHandlersMap = new globalThis.Map();
 
@@ -295,7 +295,8 @@ export class LidarControl implements IControl {
 
   /**
    * Loads a point cloud from a URL, File, or ArrayBuffer.
-   * For COPC files loaded from URL, respects the copcLoadingMode option.
+   * For COPC files loaded from URL, defaults to dynamic streaming mode.
+   * Non-COPC files or local files use full download mode.
    *
    * @param source - URL string, File object, or ArrayBuffer
    * @param options - Optional loading options including loadingMode override
@@ -305,17 +306,25 @@ export class LidarControl implements IControl {
     source: string | File | ArrayBuffer,
     options?: { loadingMode?: CopcLoadingMode }
   ): Promise<PointCloudInfo> {
-    // Determine loading mode
-    const mode = options?.loadingMode ?? this._options.copcLoadingMode ?? 'full';
-
-    // Check if we should use streaming mode for this source
-    if (
-      mode === 'dynamic' &&
+    // Check if this is a COPC file from URL
+    const isCopcUrl =
       typeof source === 'string' &&
       (source.startsWith('http://') || source.startsWith('https://')) &&
-      /\.copc\./i.test(source)
-    ) {
-      return this.loadPointCloudStreaming(source);
+      /\.copc\./i.test(source);
+
+    // Determine loading mode:
+    // - If explicitly specified in options, use that
+    // - If set in control options, use that
+    // - For COPC URLs, default to 'dynamic'
+    // - Otherwise default to 'full'
+    const mode =
+      options?.loadingMode ??
+      this._options.copcLoadingMode ??
+      (isCopcUrl ? 'dynamic' : 'full');
+
+    // Use streaming mode for COPC URLs with dynamic mode
+    if (mode === 'dynamic' && isCopcUrl) {
+      return this.loadPointCloudStreaming(source as string);
     }
 
     const id = generateId('pc');
@@ -383,6 +392,28 @@ export class LidarControl implements IControl {
       return info;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
+
+      // Check if this is a CORS error and source is a URL - fallback to download
+      const isCorsError =
+        error.message.includes('CORS') ||
+        error.message === 'Failed to fetch' ||
+        (err instanceof TypeError && error.message === 'Failed to fetch');
+
+      const isUrl =
+        typeof source === 'string' &&
+        (source.startsWith('http://') || source.startsWith('https://'));
+
+      if (isCorsError && isUrl) {
+        console.warn(
+          `CORS error detected for ${source}. Falling back to download mode...`
+        );
+
+        this._panelBuilder?.updateLoadingProgress(5, 'CORS blocked - downloading file...');
+
+        // Fallback to full download
+        return this._loadPointCloudFullDownload(source);
+      }
+
       this.setState({
         loading: false,
         error: `Failed to load: ${error.message}`,
@@ -562,6 +593,36 @@ export class LidarControl implements IControl {
       return info;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
+
+      // Check if this is a CORS error - fallback to downloading the file
+      const isCorsError =
+        error.message.includes('CORS') ||
+        error.message === 'Failed to fetch' ||
+        (err instanceof TypeError && error.message === 'Failed to fetch');
+
+      if (isCorsError) {
+        console.warn(
+          `CORS error detected for ${url}. Falling back to download mode...`
+        );
+
+        // Clean up streaming state
+        this._streamingLoader?.destroy();
+        this._streamingLoader = undefined;
+        this._streamingPointCloudId = undefined;
+
+        // Reset state and try downloading
+        this.setState({
+          loading: true,
+          streamingActive: false,
+          error: null,
+        });
+
+        this._panelBuilder?.updateLoadingProgress(5, 'CORS blocked - downloading file...');
+
+        // Fallback to full download
+        return this._loadPointCloudFullDownload(url);
+      }
+
       this.setState({
         loading: false,
         streamingActive: false,
@@ -569,6 +630,134 @@ export class LidarControl implements IControl {
       });
       this._emitWithData('loaderror', { error });
       throw error;
+    }
+  }
+
+  /**
+   * Downloads a file from URL and loads it fully.
+   * Used as fallback when streaming fails due to CORS.
+   */
+  private async _loadPointCloudFullDownload(url: string): Promise<PointCloudInfo> {
+    const id = generateId('pc');
+    const name = getFilename(url);
+
+    try {
+      this._panelBuilder?.updateLoadingProgress(10, 'Downloading file...');
+
+      // Download the entire file
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const contentLength = response.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+      // Stream download with progress
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        received += value.length;
+
+        if (total > 0) {
+          const percent = Math.round((received / total) * 50); // 0-50% for download
+          this._panelBuilder?.updateLoadingProgress(
+            10 + percent,
+            `Downloading: ${(received / 1024 / 1024).toFixed(1)} MB`
+          );
+        }
+      }
+
+      // Combine chunks into ArrayBuffer
+      const buffer = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        buffer.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      this._panelBuilder?.updateLoadingProgress(60, 'Processing point cloud...');
+
+      // Load from buffer using the standard loader
+      const onProgress = (progress: number, message: string) => {
+        // Map 0-100 to 60-100
+        const mappedProgress = 60 + (progress * 0.4);
+        this._panelBuilder?.updateLoadingProgress(mappedProgress, message);
+      };
+
+      const data = await this._loader.load(buffer.buffer, onProgress);
+
+      this._panelBuilder?.updateLoadingProgress(95, 'Creating visualization layers...');
+
+      // Add to manager
+      this._pointCloudManager?.addPointCloud(id, data);
+
+      this._panelBuilder?.updateLoadingProgress(100, 'Complete!');
+
+      // Create info object
+      const info: PointCloudInfo = {
+        id,
+        name,
+        pointCount: data.pointCount,
+        bounds: data.bounds,
+        hasRGB: data.hasRGB,
+        hasIntensity: data.hasIntensity,
+        hasClassification: data.hasClassification,
+        source: url,
+        wkt: data.wkt,
+      };
+
+      // Update state
+      const pointClouds = [...this._state.pointClouds, info];
+      this.setState({
+        loading: false,
+        pointClouds,
+        activePointCloudId: id,
+      });
+
+      this._emitWithData('load', { pointCloud: info });
+
+      // Auto-zoom
+      if (this._options.autoZoom) {
+        this.flyToPointCloud(id);
+      }
+
+      return info;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+
+      // Check if this is also a CORS error
+      const isCorsError =
+        error.message.includes('CORS') ||
+        error.message === 'Failed to fetch' ||
+        (err instanceof TypeError && error.message === 'Failed to fetch');
+
+      let errorMessage: string;
+      if (isCorsError) {
+        const hostname = new URL(url).hostname;
+        errorMessage =
+          `Cannot load from "${hostname}" - server blocks cross-origin requests (CORS). ` +
+          `Please download the file manually and load it using the file picker above.`;
+      } else {
+        errorMessage = `Failed to download: ${error.message}`;
+      }
+
+      this.setState({
+        loading: false,
+        error: errorMessage,
+      });
+      this._emitWithData('loaderror', { error: new Error(errorMessage) });
+      throw new Error(errorMessage);
     }
   }
 

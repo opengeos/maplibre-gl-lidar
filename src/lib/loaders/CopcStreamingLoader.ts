@@ -240,7 +240,20 @@ export class CopcStreamingLoader {
     this._lazPerf = await getLazPerf();
 
     // Parse COPC header and metadata
-    this._copc = await Copc.create(this._url);
+    try {
+      this._copc = await Copc.create(this._url);
+    } catch (error) {
+      // Check if this is likely a CORS error
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error(
+          `Failed to fetch from URL. This is likely a CORS (Cross-Origin Resource Sharing) error. ` +
+          `The server at "${new URL(this._url).hostname}" doesn't allow requests from this origin. ` +
+          `Solutions: (1) Download the file locally and load it as a file, ` +
+          `(2) Use a CORS proxy, or (3) Host the file on a CORS-enabled server.`
+        );
+      }
+      throw error;
+    }
     const { header, info } = this._copc;
 
     // Store root hierarchy page for later traversal

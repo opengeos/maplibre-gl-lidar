@@ -56,15 +56,34 @@
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
   width: 380px;
-  max-height: 600px;
-  overflow: hidden;
+  max-height: 80vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 1000;
   padding: 8px;
   font-size: 12px;
   line-height: 1.4;
   display: none;
   box-sizing: border-box;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.lidar-control-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lidar-control-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lidar-control-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.lidar-control-panel::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 /* Panel positioning based on parent control position */
@@ -512,6 +531,10 @@
   color: #c62828;
   font-size: 11px;
   margin-top: 8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 /* Flex utilities */
