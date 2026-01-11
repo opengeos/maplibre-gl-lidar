@@ -29,6 +29,7 @@ export class PanelBuilder {
   private _state: LidarState;
 
   // UI component references
+  private _contentElement?: HTMLElement;
   private _fileInput?: FileInput;
   private _urlInput?: HTMLInputElement;
   private _loadButton?: HTMLButtonElement;
@@ -58,6 +59,11 @@ export class PanelBuilder {
   build(): HTMLElement {
     const content = document.createElement('div');
     content.className = 'lidar-control-content';
+    // Apply max height from state
+    if (this._state.panelMaxHeight) {
+      content.style.maxHeight = `${this._state.panelMaxHeight}px`;
+    }
+    this._contentElement = content;
 
     // File input section
     content.appendChild(this._buildFileSection());
@@ -84,6 +90,11 @@ export class PanelBuilder {
    */
   updateState(state: LidarState): void {
     this._state = state;
+
+    // Update max height if changed
+    if (this._contentElement && state.panelMaxHeight) {
+      this._contentElement.style.maxHeight = `${state.panelMaxHeight}px`;
+    }
 
     // Update loading state
     if (this._loadingIndicator) {

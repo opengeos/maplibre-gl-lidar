@@ -122,11 +122,28 @@
 
 /* Content */
 .lidar-control-content {
-  max-height: 520px;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.lidar-control-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lidar-control-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lidar-control-content::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.lidar-control-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 /* Sections */
@@ -510,11 +527,21 @@
   gap: 8px;
 }
 
-/* Scrollbar hiding */
-.lidar-control-content::-webkit-scrollbar,
-.lidar-pointclouds-list::-webkit-scrollbar,
-.lidar-control-panel::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+/* Scrollbar styling for pointclouds list */
+.lidar-pointclouds-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.lidar-pointclouds-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lidar-pointclouds-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lidar-pointclouds-list::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
 }

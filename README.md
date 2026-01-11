@@ -6,8 +6,10 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
 - Multiple color schemes: elevation, intensity, classification, RGB
-- Interactive GUI control panel
-- **Point picking** - hover over points to see coordinates, elevation, intensity, and classification
+- Interactive GUI control panel with scrollable content
+- **Point picking** - hover over points to see all available attributes (coordinates, elevation, intensity, classification, RGB, GPS time, return number, etc.)
+- **Z offset adjustment** - shift point clouds vertically for alignment
+- **Elevation filtering** - filter points by elevation range
 - Automatic coordinate transformation (projected CRS to WGS84)
 - Programmatic API for loading and styling
 - React integration with hooks
@@ -120,17 +122,31 @@ The main control class implementing MapLibre's `IControl` interface.
 
 ```typescript
 interface LidarControlOptions {
+  // Panel settings
   collapsed?: boolean;        // Start collapsed (default: true)
   position?: string;          // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   title?: string;             // Panel title (default: 'LiDAR Viewer')
-  panelWidth?: number;        // Panel width in pixels (default: 380)
+  panelWidth?: number;        // Panel width in pixels (default: 365)
+  panelMaxHeight?: number;    // Panel max height with scrollbar (default: 500)
   className?: string;         // Custom CSS class
+
+  // Point cloud styling
   pointSize?: number;         // Point size in pixels (default: 2)
   opacity?: number;           // Opacity 0-1 (default: 1.0)
   colorScheme?: ColorScheme;  // Color scheme (default: 'elevation')
   pointBudget?: number;       // Max points to display (default: 1000000)
+
+  // Filters and adjustments
   elevationRange?: [number, number] | null;  // Elevation filter
+  zOffsetEnabled?: boolean;   // Enable Z offset adjustment (default: false)
+  zOffset?: number;           // Z offset in meters (default: 0)
+
+  // Interaction
   pickable?: boolean;         // Enable point picking/hover tooltips (default: false)
+  pickInfoFields?: string[];  // Fields to show in tooltip (default: all)
+
+  // Behavior
+  autoZoom?: boolean;         // Auto zoom to data after loading (default: true)
 }
 ```
 
@@ -150,6 +166,15 @@ setColorScheme(scheme: ColorScheme): void
 setElevationRange(min: number, max: number): void
 clearElevationRange(): void
 setPickable(pickable: boolean): void
+
+// Z Offset
+setZOffsetEnabled(enabled: boolean): void
+setZOffset(offset: number): void
+getZOffset(): number
+
+// Pick info customization
+setPickInfoFields(fields?: string[]): void
+getPickInfoFields(): string[] | undefined
 
 // Panel control
 toggle(): void
@@ -185,12 +210,17 @@ getMap(): MapLibreMap | undefined
 
 ### Point Picking
 
-When `pickable` is enabled, hovering over points displays a tooltip with:
+When `pickable` is enabled, hovering over points displays a tooltip with all available attributes:
 
-- **Coordinates** - Longitude and latitude
-- **Elevation** - Height in meters
-- **Intensity** - Reflectance value (if available)
+- **X, Y, Z** - Coordinates and elevation
+- **Intensity** - Reflectance value
 - **Classification** - ASPRS class name (Ground, Building, Vegetation, etc.)
+- **Red, Green, Blue** - RGB color values (if available)
+- **GpsTime** - GPS timestamp
+- **ReturnNumber / NumberOfReturns** - Return information
+- **PointSourceId** - Scanner source ID
+- **ScanAngle** - Scan angle
+- And more (EdgeOfFlightLine, ScanDirectionFlag, UserData, etc.)
 
 Enable via constructor option or toggle in the GUI panel:
 
@@ -200,7 +230,31 @@ const control = new LidarControl({ pickable: true });
 
 // Or programmatically
 control.setPickable(true);
+
+// Optionally filter which fields to display
+control.setPickInfoFields(['Classification', 'Intensity', 'GpsTime', 'ReturnNumber']);
 ```
+
+### Z Offset
+
+Shift point clouds vertically for alignment with terrain or other data:
+
+```typescript
+// Via constructor
+const control = new LidarControl({
+  zOffsetEnabled: true,
+  zOffset: 50, // Shift up 50 meters
+});
+
+// Or programmatically
+control.setZOffsetEnabled(true);
+control.setZOffset(50);
+
+// Get current offset
+console.log(control.getZOffset()); // 50
+```
+
+The Z offset can also be adjusted interactively via the "Z Offset" checkbox and slider in the GUI panel.
 
 ### React Hooks
 
@@ -214,6 +268,8 @@ const {
   setOpacity,
   setColorScheme,
   setElevationRange,
+  setZOffsetEnabled,
+  setZOffset,
   toggle,
   reset,
 } = useLidarState(initialState?);

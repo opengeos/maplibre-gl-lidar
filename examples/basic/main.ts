@@ -33,6 +33,7 @@ map.on('load', () => {
     pointSize: 2,
     opacity: 1.0,
     colorScheme: 'elevation',
+    // panelMaxHeight: 600,
   });
 
   // Add control to the map
