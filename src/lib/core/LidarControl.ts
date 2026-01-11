@@ -7,11 +7,15 @@ import type {
   LidarEventData,
   PointCloudInfo,
   ColorScheme,
+  CopcLoadingMode,
 } from './types';
 import type { PickedPointInfo } from '../layers/types';
+import type { StreamingLoaderOptions, ViewportInfo, StreamingProgressEvent } from '../loaders/streaming-types';
 import { DeckOverlay } from './DeckOverlay';
 import { PointCloudLoader } from '../loaders/PointCloudLoader';
+import { CopcStreamingLoader } from '../loaders/CopcStreamingLoader';
 import { PointCloudManager } from '../layers/PointCloudManager';
+import { ViewportManager } from './ViewportManager';
 import { PanelBuilder } from '../gui/PanelBuilder';
 import { generateId, getFilename } from '../utils/helpers';
 
@@ -35,6 +39,10 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields'>> & P
   pickInfoFields: undefined, // Show all fields by default
   zOffsetEnabled: false,
   zOffset: 0,
+  copcLoadingMode: 'full',
+  streamingPointBudget: 5_000_000,
+  streamingMaxConcurrentRequests: 4,
+  streamingViewportDebounceMs: 150,
 };
 
 /**
@@ -73,6 +81,11 @@ export class LidarControl implements IControl {
   private _loader: PointCloudLoader;
   private _panelBuilder?: PanelBuilder;
   private _tooltip?: HTMLElement;
+
+  // Streaming components
+  private _streamingLoader?: CopcStreamingLoader;
+  private _viewportManager?: ViewportManager;
+  private _streamingPointCloudId?: string;
 
   /**
    * Creates a new LidarControl instance.
@@ -148,6 +161,9 @@ export class LidarControl implements IControl {
    * Implements the IControl interface.
    */
   onRemove(): void {
+    // Stop streaming if active
+    this.stopStreaming();
+
     // Clean up deck.gl overlay
     this._deckOverlay?.destroy();
 
@@ -279,11 +295,29 @@ export class LidarControl implements IControl {
 
   /**
    * Loads a point cloud from a URL, File, or ArrayBuffer.
+   * For COPC files loaded from URL, respects the copcLoadingMode option.
    *
    * @param source - URL string, File object, or ArrayBuffer
+   * @param options - Optional loading options including loadingMode override
    * @returns Promise resolving to the point cloud info
    */
-  async loadPointCloud(source: string | File | ArrayBuffer): Promise<PointCloudInfo> {
+  async loadPointCloud(
+    source: string | File | ArrayBuffer,
+    options?: { loadingMode?: CopcLoadingMode }
+  ): Promise<PointCloudInfo> {
+    // Determine loading mode
+    const mode = options?.loadingMode ?? this._options.copcLoadingMode ?? 'full';
+
+    // Check if we should use streaming mode for this source
+    if (
+      mode === 'dynamic' &&
+      typeof source === 'string' &&
+      (source.startsWith('http://') || source.startsWith('https://')) &&
+      /\.copc\./i.test(source)
+    ) {
+      return this.loadPointCloudStreaming(source);
+    }
+
     const id = generateId('pc');
 
     // Determine name
@@ -365,6 +399,12 @@ export class LidarControl implements IControl {
    */
   unloadPointCloud(id?: string): void {
     if (id) {
+      // Check if this is the streaming point cloud
+      if (id === this._streamingPointCloudId) {
+        this.stopStreaming();
+        return;
+      }
+
       this._pointCloudManager?.removePointCloud(id);
       const pointClouds = this._state.pointClouds.filter((pc) => pc.id !== id);
       this.setState({
@@ -376,11 +416,243 @@ export class LidarControl implements IControl {
       });
       this._emit('unload');
     } else {
-      // Unload all
+      // Unload all including streaming
+      this.stopStreaming();
       this._pointCloudManager?.clear();
       this.setState({ pointClouds: [], activePointCloudId: null });
       this._emit('unload');
     }
+  }
+
+  /**
+   * Loads a point cloud using streaming (on-demand) loading.
+   * Ideal for large COPC files accessed via URL.
+   * Points are loaded dynamically based on viewport and zoom level.
+   *
+   * @param url - URL to the COPC file
+   * @param options - Optional streaming options
+   * @returns Promise resolving to initial point cloud info
+   */
+  async loadPointCloudStreaming(
+    url: string,
+    options?: StreamingLoaderOptions
+  ): Promise<PointCloudInfo> {
+    // Stop any existing streaming first
+    this.stopStreaming();
+
+    const id = generateId('pc-stream');
+    this._streamingPointCloudId = id;
+    const name = getFilename(url);
+
+    this.setState({ loading: true, error: null, streamingActive: true });
+    this._emit('loadstart');
+    this._emit('streamingstart');
+
+    try {
+      // Create streaming loader with options
+      this._streamingLoader = new CopcStreamingLoader(url, {
+        pointBudget: options?.pointBudget ?? this._options.streamingPointBudget,
+        maxConcurrentRequests:
+          options?.maxConcurrentRequests ?? this._options.streamingMaxConcurrentRequests,
+        viewportDebounceMs:
+          options?.viewportDebounceMs ?? this._options.streamingViewportDebounceMs,
+        minDetailZoom: options?.minDetailZoom ?? 10,
+        maxOctreeDepth: options?.maxOctreeDepth ?? 20,
+      });
+
+      // Initialize - reads header and root hierarchy
+      this._panelBuilder?.updateLoadingProgress(10, 'Initializing COPC file...');
+      const { bounds, totalPoints, hasRGB, spacing } =
+        await this._streamingLoader.initialize();
+
+      this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
+
+      // Setup callback for when points are loaded
+      this._streamingLoader.setOnPointsLoaded((data) => {
+        this._pointCloudManager?.updatePointCloud(id, data);
+      });
+
+      // Setup event handlers
+      this._streamingLoader.on('progress', (_, data) => {
+        const progress = data as StreamingProgressEvent;
+        this.setState({
+          streamingProgress: {
+            loadedNodes: progress.loadedNodes,
+            loadedPoints: progress.loadedPoints,
+            queueSize: progress.queueSize,
+            isLoading: progress.isLoading,
+          },
+        });
+
+        const percent = Math.min(
+          99,
+          20 + Math.round((progress.loadedPoints / progress.pointBudget) * 70)
+        );
+        this._panelBuilder?.updateLoadingProgress(
+          percent,
+          `Streaming: ${progress.loadedPoints.toLocaleString()} points loaded`
+        );
+
+        this._emit('streamingprogress');
+      });
+
+      this._streamingLoader.on('budgetreached', () => {
+        this._emit('budgetreached');
+      });
+
+      // Create viewport manager
+      this._viewportManager = new ViewportManager(
+        this._map!,
+        (viewport) => this._handleViewportChangeForStreaming(viewport),
+        {
+          debounceMs:
+            options?.viewportDebounceMs ?? this._options.streamingViewportDebounceMs,
+          minDetailZoom: options?.minDetailZoom ?? 10,
+          maxOctreeDepth: options?.maxOctreeDepth ?? 20,
+          spacing,
+        }
+      );
+
+      // Create initial point cloud info
+      const info: PointCloudInfo = {
+        id,
+        name: `${name} (streaming)`,
+        pointCount: totalPoints,
+        bounds,
+        hasRGB,
+        hasIntensity: true,
+        hasClassification: true,
+        source: url,
+        wkt: undefined, // Will be available after first load
+      };
+
+      // Update state
+      const pointClouds = [...this._state.pointClouds, info];
+      this.setState({
+        loading: false,
+        pointClouds,
+        activePointCloudId: id,
+      });
+
+      // Start viewport-based loading
+      this._viewportManager.start();
+
+      // Auto-zoom if enabled
+      if (this._options.autoZoom) {
+        // First fly to bounds
+        this._map?.fitBounds(
+          [
+            [bounds.minX, bounds.minY],
+            [bounds.maxX, bounds.maxY],
+          ],
+          {
+            padding: 50,
+            duration: 1000,
+          }
+        );
+
+        // Wait for fly animation then trigger viewport update
+        setTimeout(() => {
+          this._viewportManager?.forceUpdate();
+        }, 1100);
+      }
+
+      this._emitWithData('load', { pointCloud: info });
+
+      return info;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.setState({
+        loading: false,
+        streamingActive: false,
+        error: `Failed to load: ${error.message}`,
+      });
+      this._emitWithData('loaderror', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Handles viewport changes for streaming mode.
+   * Selects and loads nodes based on current viewport.
+   *
+   * @param viewport - Current viewport information
+   */
+  private async _handleViewportChangeForStreaming(
+    viewport: ViewportInfo
+  ): Promise<void> {
+    if (!this._streamingLoader) return;
+
+    try {
+      // Select nodes for this viewport
+      const nodesToLoad =
+        await this._streamingLoader.selectNodesForViewport(viewport);
+
+      // Queue nodes for loading
+      for (const node of nodesToLoad) {
+        this._streamingLoader.queueNode(node);
+      }
+
+      // Start loading
+      await this._streamingLoader.loadQueuedNodes();
+    } catch (err) {
+      console.warn('Failed to load nodes for viewport:', err);
+    }
+  }
+
+  /**
+   * Stops streaming loading and cleans up resources.
+   */
+  stopStreaming(): void {
+    if (this._viewportManager) {
+      this._viewportManager.destroy();
+      this._viewportManager = undefined;
+    }
+
+    if (this._streamingLoader) {
+      this._streamingLoader.destroy();
+      this._streamingLoader = undefined;
+    }
+
+    if (this._streamingPointCloudId) {
+      this._pointCloudManager?.removePointCloud(this._streamingPointCloudId);
+
+      // Remove from state
+      const pointClouds = this._state.pointClouds.filter(
+        (pc) => pc.id !== this._streamingPointCloudId
+      );
+      this.setState({
+        pointClouds,
+        activePointCloudId:
+          this._state.activePointCloudId === this._streamingPointCloudId
+            ? pointClouds[0]?.id || null
+            : this._state.activePointCloudId,
+        streamingActive: false,
+        streamingProgress: undefined,
+      });
+
+      this._streamingPointCloudId = undefined;
+      this._emit('streamingstop');
+      this._emit('unload');
+    }
+  }
+
+  /**
+   * Checks if streaming mode is currently active.
+   *
+   * @returns True if streaming is active
+   */
+  isStreaming(): boolean {
+    return this._state.streamingActive ?? false;
+  }
+
+  /**
+   * Gets the current streaming progress.
+   *
+   * @returns Streaming progress or undefined if not streaming
+   */
+  getStreamingProgress(): LidarState['streamingProgress'] {
+    return this._state.streamingProgress;
   }
 
   /**

@@ -33,6 +33,8 @@ map.on('load', () => {
     pointSize: 2,
     opacity: 1.0,
     colorScheme: 'elevation',
+    copcLoadingMode: 'dynamic',  // or 'full' (default)
+    streamingPointBudget: 5_000_000
     // panelMaxHeight: 600,
   });
 
@@ -81,4 +83,25 @@ map.on('load', () => {
   //     lidarControl.flyToPointCloud();
   //   })
   //   .catch((err) => console.error('Failed to load:', err));
+
+  // Example: Load with dynamic streaming mode for large COPC files from URL
+  // This loads points on-demand based on viewport and zoom level
+  // lidarControl.loadPointCloud('https://example.com/large-pointcloud.copc.laz', {
+  //   loadingMode: 'dynamic'  // Options: 'full' (default) | 'dynamic'
+  // });
+
+  // Or use direct streaming method:
+  // lidarControl.loadPointCloudStreaming('https://example.com/large-pointcloud.copc.laz', {
+  //   pointBudget: 5_000_000,       // Max points in memory (default: 5M)
+  //   maxConcurrentRequests: 4,     // Parallel HTTP requests (default: 4)
+  //   viewportDebounceMs: 150       // Debounce viewport changes (default: 150ms)
+  // });
+
+  // Listen for streaming events
+  // lidarControl.on('streamingprogress', (event) => {
+  //   console.log('Streaming progress:', event.state.streamingProgress);
+  // });
+  // lidarControl.on('budgetreached', () => {
+  //   console.log('Point budget reached');
+  // });
 });

@@ -4,7 +4,9 @@ import './lib/styles/lidar-control.css';
 // Main entry point - Core exports
 export { LidarControl } from './lib/core/LidarControl';
 export { DeckOverlay } from './lib/core/DeckOverlay';
+export { ViewportManager } from './lib/core/ViewportManager';
 export { PointCloudLoader } from './lib/loaders/PointCloudLoader';
+export { CopcStreamingLoader } from './lib/loaders/CopcStreamingLoader';
 export { PointCloudManager } from './lib/layers/PointCloudManager';
 export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
 
@@ -20,12 +22,25 @@ export type {
   ColorScheme,
   ColorSchemeType,
   ColorSchemeConfig,
+  CopcLoadingMode,
 } from './lib/core/types';
 
 export type {
   PointCloudData,
   LoaderOptions,
 } from './lib/loaders/types';
+
+export type {
+  StreamingLoaderOptions,
+  StreamingProgressEvent,
+  ViewportInfo,
+  CachedNode,
+  NodeKey,
+  NodeState,
+  StreamingLoaderEvent,
+  StreamingLoaderEventHandler,
+  StreamingLoadOptions,
+} from './lib/loaders/streaming-types';
 
 export type {
   PointCloudLayerOptions,

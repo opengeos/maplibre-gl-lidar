@@ -67,6 +67,45 @@ export class PointCloudManager {
   }
 
   /**
+   * Updates an existing point cloud with new data.
+   * Used for streaming/incremental loading where points are added over time.
+   *
+   * @param id - Unique identifier for the point cloud
+   * @param data - Updated point cloud data
+   */
+  updatePointCloud(id: string, data: PointCloudData): void {
+    const existing = this._pointClouds.get(id);
+
+    if (existing) {
+      // Recalculate colors for new data
+      const colors = this._colorProcessor.getColors(data, this._options.colorScheme);
+
+      this._pointClouds.set(id, {
+        id,
+        data,
+        colors,
+        coordinateOrigin: data.coordinateOrigin,
+      });
+
+      // Recreate layers with new data
+      this._createLayer(id);
+    } else {
+      // New point cloud - use existing addPointCloud
+      this.addPointCloud(id, data);
+    }
+  }
+
+  /**
+   * Gets the current point count for a point cloud.
+   *
+   * @param id - Point cloud ID
+   * @returns Point count or 0 if not found
+   */
+  getPointCount(id: string): number {
+    return this._pointClouds.get(id)?.data.pointCount || 0;
+  }
+
+  /**
    * Removes a point cloud from the visualization.
    *
    * @param id - ID of the point cloud to remove

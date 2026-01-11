@@ -1,6 +1,11 @@
 import type { Map } from 'maplibre-gl';
 
 /**
+ * COPC loading mode options
+ */
+export type CopcLoadingMode = 'full' | 'dynamic';
+
+/**
  * Color scheme options for point cloud visualization
  */
 export type ColorSchemeType = 'elevation' | 'intensity' | 'classification' | 'rgb';
@@ -149,6 +154,30 @@ export interface LidarControlOptions {
    * @default 0
    */
   zOffset?: number;
+
+  /**
+   * Loading mode for COPC files: 'full' loads entire file, 'dynamic' streams based on viewport
+   * @default 'full'
+   */
+  copcLoadingMode?: CopcLoadingMode;
+
+  /**
+   * Point budget for streaming mode (maximum points in memory)
+   * @default 5000000
+   */
+  streamingPointBudget?: number;
+
+  /**
+   * Maximum concurrent requests for streaming mode
+   * @default 4
+   */
+  streamingMaxConcurrentRequests?: number;
+
+  /**
+   * Debounce time for viewport changes in streaming mode (ms)
+   * @default 150
+   */
+  streamingViewportDebounceMs?: number;
 }
 
 /**
@@ -174,6 +203,15 @@ export interface LidarState {
   zOffsetEnabled: boolean;
   /** Z offset value in meters */
   zOffset: number;
+  /** Whether streaming mode is active */
+  streamingActive?: boolean;
+  /** Current streaming progress */
+  streamingProgress?: {
+    loadedNodes: number;
+    loadedPoints: number;
+    queueSize: number;
+    isLoading: boolean;
+  };
 }
 
 /**
@@ -187,7 +225,11 @@ export type LidarControlEvent =
   | 'loadstart'
   | 'loaderror'
   | 'unload'
-  | 'stylechange';
+  | 'stylechange'
+  | 'streamingprogress'
+  | 'streamingstart'
+  | 'streamingstop'
+  | 'budgetreached';
 
 /**
  * Event data passed to event handlers
