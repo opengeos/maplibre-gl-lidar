@@ -1,5 +1,9 @@
 // React entry point
 export { LidarControlReact } from './lib/core/LidarControlReact';
+export { LidarControl } from './lib/core/LidarControl';
+
+// Layer control adapter
+export { LidarLayerAdapter } from './lib/adapters';
 
 // React hooks
 export { useLidarState } from './lib/hooks/useLidarState';
@@ -10,6 +14,7 @@ export type {
   LidarControlOptions,
   LidarState,
   LidarControlReactProps,
+  LidarControlRef,
   LidarControlEvent,
   LidarControlEventHandler,
   LidarEventData,

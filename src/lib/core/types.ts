@@ -260,6 +260,14 @@ export interface LidarEventData {
 export type LidarControlEventHandler = (event: LidarEventData) => void;
 
 /**
+ * Ref type for accessing the internal LidarControl instance
+ */
+export interface LidarControlRef {
+  /** The internal LidarControl instance */
+  getControl(): import('./LidarControl').LidarControl | null;
+}
+
+/**
  * Props for the React wrapper component
  */
 export interface LidarControlReactProps extends LidarControlOptions {
@@ -287,4 +295,10 @@ export interface LidarControlReactProps extends LidarControlOptions {
    * Callback fired when an error occurs
    */
   onError?: (error: Error) => void;
+
+  /**
+   * Callback to receive the internal LidarControl instance.
+   * Use this to integrate with other controls like maplibre-gl-layer-control.
+   */
+  onControlReady?: (control: import('./LidarControl').LidarControl) => void;
 }

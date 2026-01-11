@@ -10,6 +10,9 @@ export { CopcStreamingLoader } from './lib/loaders/CopcStreamingLoader';
 export { PointCloudManager } from './lib/layers/PointCloudManager';
 export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
 
+// Layer control adapter
+export { LidarLayerAdapter } from './lib/adapters';
+
 // Type exports
 export type {
   LidarControlOptions,
