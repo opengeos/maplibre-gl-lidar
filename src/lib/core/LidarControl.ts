@@ -1483,30 +1483,29 @@ export class LidarControl implements IControl {
     } else {
       newHidden.add(code);
     }
-    this._state.hiddenClassifications = newHidden;
     this._pointCloudManager?.setHiddenClassifications(newHidden);
+    this.setState({ hiddenClassifications: newHidden });
     this._emit('stylechange');
-    this._emit('statechange');
   }
 
   /**
    * Shows all classifications.
    */
   private _showAllClassifications(): void {
-    this._state.hiddenClassifications = new Set();
-    this._pointCloudManager?.setHiddenClassifications(new Set());
+    const newHidden = new Set<number>();
+    this._pointCloudManager?.setHiddenClassifications(newHidden);
+    this.setState({ hiddenClassifications: newHidden });
     this._emit('stylechange');
-    this._emit('statechange');
   }
 
   /**
    * Hides all classifications.
    */
   private _hideAllClassifications(): void {
-    this._state.hiddenClassifications = new Set(this._state.availableClassifications);
-    this._pointCloudManager?.setHiddenClassifications(this._state.hiddenClassifications);
+    const newHidden = new Set(this._state.availableClassifications);
+    this._pointCloudManager?.setHiddenClassifications(newHidden);
+    this.setState({ hiddenClassifications: newHidden });
     this._emit('stylechange');
-    this._emit('statechange');
   }
 
   /**
