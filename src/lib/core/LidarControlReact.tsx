@@ -36,6 +36,7 @@ import type { LidarControlReactProps } from './types';
  */
 export function LidarControlReact({
   map,
+  defaultUrl,
   onStateChange,
   onLoad,
   onError,
@@ -75,6 +76,13 @@ export function LidarControlReact({
 
     // Add control to map
     map.addControl(control, options.position || 'top-right');
+
+    // Load default URL if provided
+    if (defaultUrl) {
+      control.loadPointCloud(defaultUrl).catch((err) => {
+        console.error('Failed to load default URL:', err);
+      });
+    }
 
     // Cleanup on unmount
     return () => {

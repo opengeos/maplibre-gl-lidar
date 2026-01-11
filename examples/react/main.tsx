@@ -30,8 +30,8 @@ function App() {
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center: [-122.8, 44.05], // Near Autzen Stadium, Oregon
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: [-123.06171, 44.0499], // Near Autzen Stadium, Oregon
       zoom: 14,
       pitch: 60,
       maxPitch: 85, // Allow higher pitch for better 3D viewing
@@ -193,6 +193,7 @@ function App() {
           onStateChange={handleStateChange}
           onLoad={handleLoad}
           onError={handleError}
+          defaultUrl="https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz"
         />
       )}
     </div>

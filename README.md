@@ -2,6 +2,9 @@
 
 A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 
+[![npm version](https://img.shields.io/npm/v/maplibre-gl-lidar.svg)](https://www.npmjs.com/package/maplibre-gl-lidar)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ## Features
 
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
@@ -17,6 +20,12 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 - React integration with hooks
 - deck.gl PointCloudLayer with optimized chunking for large datasets
 - TypeScript support
+
+## Demo
+
+Try the [live demo](https://opengeos.org/maplibre-gl-lidar).
+
+![](https://github.com/user-attachments/assets/db03b60d-918d-438d-9f3f-1f922b1a0a2b)
 
 ## Installation
 
@@ -107,6 +116,7 @@ function App() {
           pointSize={state.pointSize}
           colorScheme={state.colorScheme}
           onLoad={(pc) => console.log('Loaded:', pc)}
+          defaultUrl="https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz"
         />
       )}
     </div>
