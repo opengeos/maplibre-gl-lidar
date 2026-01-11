@@ -12,9 +12,11 @@ async function getLazPerf(): Promise<LazPerf> {
   if (!lazPerfInstance) {
     lazPerfInstance = await createLazPerf({
       locateFile: (path: string) => {
-        // Load WASM from public folder
+        // Load WASM from public folder, accounting for base URL
         if (path.endsWith('.wasm')) {
-          return '/laz-perf.wasm';
+          // Use Vite's BASE_URL or fallback to root
+          const base = import.meta.env?.BASE_URL || '/';
+          return `${base}laz-perf.wasm`;
         }
         return path;
       },
