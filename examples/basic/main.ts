@@ -10,6 +10,7 @@ const map = new maplibregl.Map({
   center: [-123.06171, 44.0499], // Near Autzen Stadium, Oregon (sample data location)
   zoom: 14,
   pitch: 60,
+  maxPitch: 85, // Allow higher pitch for better 3D viewing
   bearing: -17,
 });
 

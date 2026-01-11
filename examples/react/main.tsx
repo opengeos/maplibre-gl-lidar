@@ -34,6 +34,7 @@ function App() {
       center: [-122.8, 44.05], // Near Autzen Stadium, Oregon
       zoom: 14,
       pitch: 60,
+      maxPitch: 85, // Allow higher pitch for better 3D viewing
       bearing: -17,
     });
 

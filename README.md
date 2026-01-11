@@ -36,6 +36,7 @@ const map = new maplibregl.Map({
   center: [-122.4, 37.8],
   zoom: 12,
   pitch: 60,
+  maxPitch: 85, // Allow higher pitch for better 3D viewing
 });
 
 map.on('load', () => {
@@ -84,6 +85,7 @@ function App() {
       center: [-122.4, 37.8],
       zoom: 12,
       pitch: 60,
+      maxPitch: 85, // Allow higher pitch for better 3D viewing
     });
 
     mapInstance.on('load', () => setMap(mapInstance));
