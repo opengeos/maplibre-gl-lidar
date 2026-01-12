@@ -48,6 +48,28 @@ function App() {
     mapInstance.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
     mapInstance.on('load', () => {
+      // Add Google Satellite basemap
+      mapInstance.addSource('google-satellite', {
+        type: 'raster',
+        tiles: ['https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'],
+        tileSize: 256,
+        attribution: '&copy; Google',
+      });
+
+      mapInstance.addLayer(
+        {
+          id: 'google-satellite',
+          type: 'raster',
+          source: 'google-satellite',
+          paint: {
+            'raster-opacity': 1,
+          },
+          layout: {
+            visibility: 'none', // Hidden by default
+          },
+        },
+      );
+
       setMap(mapInstance);
     });
 
@@ -67,14 +89,20 @@ function App() {
     // Create adapter for the layer control
     const lidarAdapter = new LidarLayerAdapter(control);
 
-    // Create and add layer control
+    // Create and add layer control (reorder to place above LidarControl)
     const layerControl = new LayerControl({
       collapsed: true,
       customLayerAdapters: [lidarAdapter],
       showStyleEditor: false, // Style editor doesn't work with custom layers
+      basemapStyleUrl: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
     });
     layerControlRef.current = layerControl;
-    map.addControl(layerControl, 'bottom-left');
+
+    // Remove LidarControl, add LayerControl first, then re-add LidarControl
+    // This ensures LayerControl appears above LidarControl
+    map.removeControl(control);
+    map.addControl(layerControl, 'top-right');
+    map.addControl(control, 'top-right');
   }, [map]);
 
   const handleStateChange = (newState: LidarState) => {
@@ -180,28 +208,6 @@ function App() {
             style={{ width: '100%' }}
           />
         </div>
-      </div>
-
-      {/* Info box */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 20,
-          left: 20,
-          background: 'white',
-          padding: '12px 16px',
-          borderRadius: 4,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          fontSize: 13,
-          maxWidth: 300,
-          zIndex: 1,
-        }}
-      >
-        <h3 style={{ margin: '0 0 8px 0', fontSize: 14 }}>React Integration</h3>
-        <p style={{ margin: 0, color: '#666', lineHeight: 1.5 }}>
-          This example shows how to control the LiDAR viewer from React state.
-          Use the buttons on the left to change styling options.
-        </p>
       </div>
 
       {/* LiDAR control */}

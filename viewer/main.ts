@@ -1,21 +1,20 @@
 import maplibregl from 'maplibre-gl';
-import { LidarControl } from '../src/index';
+import { LidarControl, LidarLayerAdapter } from '../src/index';
+import { LayerControl } from 'maplibre-gl-layer-control';
 import '../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import 'maplibre-gl-layer-control/style.css';
 
 // DOM elements
 const urlFormContainer = document.getElementById('url-form-container') as HTMLDivElement;
 const urlForm = document.getElementById('url-form') as HTMLFormElement;
 const urlInput = document.getElementById('url-input') as HTMLInputElement;
 const loadBtn = document.getElementById('load-btn') as HTMLButtonElement;
-const mapEl = document.getElementById('map') as HTMLDivElement;
-const infoBox = document.getElementById('info-box') as HTMLDivElement;
-const urlDisplay = document.getElementById('url-display') as HTMLDivElement;
-const loadAnotherBtn = document.getElementById('load-another-btn') as HTMLButtonElement;
 const loadingIndicator = document.getElementById('loading-indicator') as HTMLDivElement;
 
 let map: maplibregl.Map | null = null;
 let lidarControl: LidarControl | null = null;
+let layerControl: LayerControl | null = null;
 
 // Initialize map (lazy)
 function initMap(): maplibregl.Map {
@@ -35,6 +34,31 @@ function initMap(): maplibregl.Map {
   map.addControl(new maplibregl.GlobeControl(), 'top-right');
   map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
+  // Add Google Satellite basemap when map style loads
+  map.on('style.load', () => {
+    if (!map) return;
+
+    // Add Google Satellite basemap
+    map.addSource('google-satellite', {
+      type: 'raster',
+      tiles: ['https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'],
+      tileSize: 256,
+      attribution: '&copy; Google',
+    });
+
+    map.addLayer({
+      id: 'google-satellite',
+      type: 'raster',
+      source: 'google-satellite',
+      paint: {
+        'raster-opacity': 1,
+      },
+      layout: {
+        visibility: 'none', // Hidden by default
+      },
+    });
+  });
+
   return map;
 }
 
@@ -52,6 +76,22 @@ function initLidarControl(): LidarControl {
   });
 
   return lidarControl;
+}
+
+// Initialize LayerControl (lazy)
+function initLayerControl(control: LidarControl): LayerControl {
+  if (layerControl) return layerControl;
+
+  const lidarAdapter = new LidarLayerAdapter(control);
+
+  layerControl = new LayerControl({
+    collapsed: true,
+    customLayerAdapters: [lidarAdapter],
+    showStyleEditor: true,
+    basemapStyleUrl: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  });
+
+  return layerControl;
 }
 
 // Load point cloud from URL
@@ -73,6 +113,14 @@ async function loadPointCloud(url: string): Promise<void> {
 
     // Initialize LiDAR control if needed
     const control = initLidarControl();
+
+    // Initialize LayerControl if needed (add first so it appears above LidarControl)
+    const lc = initLayerControl(control);
+    if (!mapInstance.hasControl(lc)) {
+      mapInstance.addControl(lc, 'top-right');
+    }
+
+    // Add LidarControl after LayerControl
     if (!mapInstance.hasControl(control)) {
       mapInstance.addControl(control, 'top-right');
     }
@@ -100,10 +148,8 @@ async function loadPointCloud(url: string): Promise<void> {
     const filename = url.split('/').pop() || 'Point Cloud';
     document.title = `${filename} - MapLibre GL LiDAR`;
 
-    // Show map, hide form
+    // Hide form
     urlFormContainer.style.display = 'none';
-    infoBox.style.display = 'block';
-    urlDisplay.textContent = url;
   } catch (err) {
     console.error('Failed to load point cloud:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -112,21 +158,6 @@ async function loadPointCloud(url: string): Promise<void> {
     loadingIndicator.style.display = 'none';
     loadBtn.disabled = false;
   }
-}
-
-// Show form (reset to initial state)
-function showForm(): void {
-  urlFormContainer.style.display = 'flex';
-  infoBox.style.display = 'none';
-  urlInput.focus();
-
-  // Update URL (remove query param)
-  const newUrl = new URL(window.location.href);
-  newUrl.searchParams.delete('url');
-  window.history.pushState({}, '', newUrl.toString());
-
-  // Reset title
-  document.title = 'MapLibre GL LiDAR - Viewer';
 }
 
 // Event listeners
@@ -148,9 +179,6 @@ document.querySelectorAll('.sample-urls button[data-url]').forEach((btn) => {
     }
   });
 });
-
-// Load another button
-loadAnotherBtn.addEventListener('click', showForm);
 
 // Check for URL parameter on page load
 const params = new URLSearchParams(window.location.search);

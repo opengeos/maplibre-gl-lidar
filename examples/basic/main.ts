@@ -5,10 +5,12 @@ import '../../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import 'maplibre-gl-layer-control/style.css';
 
+const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
 // Create map with 3D terrain enabled
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  style: BASEMAP_STYLE,
   center: [-123.06171, 44.0499], // Near Autzen Stadium, Oregon (sample data location)
   zoom: 14,
   pitch: 60,
@@ -30,6 +32,28 @@ map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
 // Add LiDAR control when map loads
 map.on('load', () => {
+  // Add Google Satellite basemap
+  map.addSource('google-satellite', {
+    type: 'raster',
+    tiles: ['https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'],
+    tileSize: 256,
+    attribution: '&copy; Google',
+  });
+
+  map.addLayer(
+    {
+      id: 'google-satellite',
+      type: 'raster',
+      source: 'google-satellite',
+      paint: {
+        'raster-opacity': 1,
+      },
+      layout: {
+        visibility: 'none', // Hidden by default
+      },
+    },
+  );
+
   // Create the LiDAR control with options
   // COPC files from URLs automatically use dynamic streaming mode
   // Non-COPC files or local files use full download mode
@@ -48,15 +72,16 @@ map.on('load', () => {
   // Create layer adapter for the layer control
   const lidarAdapter = new LidarLayerAdapter(lidarControl);
 
-  // Add layer control with the lidar adapter
+  // Add layer control with the lidar adapter (add first so it appears above LidarControl)
   const layerControl = new LayerControl({
     collapsed: true,
     customLayerAdapters: [lidarAdapter],
     showStyleEditor: true, // Style editor doesn't work with custom layers
+    basemapStyleUrl: BASEMAP_STYLE,
   });
   map.addControl(layerControl, 'top-right');
 
-  // Add control to the map
+  // Add LidarControl after LayerControl
   map.addControl(lidarControl, 'top-right');
 
 

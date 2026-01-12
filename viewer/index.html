@@ -137,55 +137,6 @@
       height: 100vh;
     }
 
-    .info-box {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      background: white;
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-      font-size: 13px;
-      max-width: 350px;
-      z-index: 1;
-      display: none;
-    }
-
-    .info-box h3 {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-    }
-
-    .info-box p {
-      margin: 0 0 10px 0;
-      color: #666;
-      line-height: 1.5;
-    }
-
-    .info-box .url-display {
-      word-break: break-all;
-      font-family: monospace;
-      font-size: 11px;
-      background: #f5f5f5;
-      padding: 8px;
-      border-radius: 4px;
-      margin-bottom: 10px;
-    }
-
-    .info-box button {
-      background: #1a5f7a;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-
-    .info-box button:hover {
-      background: #0d4f5e;
-    }
-
     #loading-indicator {
       position: absolute;
       top: 50%;
@@ -252,14 +203,6 @@
 
   <!-- Map Container -->
   <div id="map"></div>
-
-  <!-- Info Box -->
-  <div id="info-box" class="info-box">
-    <h3>Point Cloud Loaded</h3>
-    <p>Use the control panel in the top-right corner to adjust styling.</p>
-    <div id="url-display" class="url-display"></div>
-    <button id="load-another-btn">Load Another</button>
-  </div>
 
   <!-- Loading Indicator -->
   <div id="loading-indicator">
