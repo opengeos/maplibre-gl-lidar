@@ -260,7 +260,8 @@ export type LidarControlEvent =
 export interface LidarEventData {
   type: LidarControlEvent;
   state: LidarState;
-  pointCloud?: PointCloudInfo;
+  /** Full point cloud info (for load events) or just the id (for unload events) */
+  pointCloud?: PointCloudInfo | { id: string };
   error?: Error;
 }
 

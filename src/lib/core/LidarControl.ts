@@ -531,9 +531,11 @@ export class LidarControl implements IControl {
       };
 
       this.setState(stateUpdate);
-      this._emit('unload');
+      this._emitWithData('unload', { pointCloud: { id } });
     } else {
       // Unload all including streaming
+      // Emit unload events for each point cloud before clearing
+      const allIds = this._state.pointClouds.map((pc) => pc.id);
       this.stopStreaming();
       this._pointCloudManager?.clear();
       this.setState({
@@ -542,7 +544,10 @@ export class LidarControl implements IControl {
         availableClassifications: new Set(),
         hiddenClassifications: new Set(),
       });
-      this._emit('unload');
+      // Emit unload event for each removed point cloud
+      for (const removedId of allIds) {
+        this._emitWithData('unload', { pointCloud: { id: removedId } });
+      }
     }
   }
 
@@ -1009,7 +1014,7 @@ export class LidarControl implements IControl {
       });
 
       this._emit('streamingstop');
-      this._emit('unload');
+      this._emitWithData('unload', { pointCloud: { id } });
     } else {
       // Stop all streaming datasets
       const streamingIds = Array.from(this._streamingLoaders.keys());
@@ -1051,7 +1056,10 @@ export class LidarControl implements IControl {
 
       if (streamingIds.length > 0) {
         this._emit('streamingstop');
-        this._emit('unload');
+        // Emit unload event for each removed streaming layer
+        for (const removedId of streamingIds) {
+          this._emitWithData('unload', { pointCloud: { id: removedId } });
+        }
       }
     }
   }

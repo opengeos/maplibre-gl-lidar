@@ -61,7 +61,8 @@ export function LidarControlReact({
 
     if (onLoad) {
       control.on('load', (event) => {
-        if (event.pointCloud) {
+        // Load events always provide full PointCloudInfo (with 'name' field)
+        if (event.pointCloud && 'name' in event.pointCloud) {
           onLoad(event.pointCloud);
         }
       });

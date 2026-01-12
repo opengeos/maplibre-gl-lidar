@@ -53,19 +53,18 @@ export class LidarLayerAdapter implements CustomLayerAdapter {
       }
     };
 
-    const handleUnload = () => {
-      // When unload fires, the layer has already been removed from state.
-      // The layer control will refresh its list via getLayerIds().
-      // We don't need to notify specific layers here since the adapter
-      // will be polled for current state.
+    const handleUnload = (event: { pointCloud?: { id: string } }) => {
+      if (event.pointCloud?.id) {
+        this.notifyLayerRemoved(event.pointCloud.id);
+      }
     };
 
     this._lidarControl.on('load', handleLoad as any);
-    this._lidarControl.on('unload', handleUnload);
+    this._lidarControl.on('unload', handleUnload as any);
 
     this._unsubscribe = () => {
       this._lidarControl.off('load', handleLoad as any);
-      this._lidarControl.off('unload', handleUnload);
+      this._lidarControl.off('unload', handleUnload as any);
     };
   }
 
