@@ -17,7 +17,7 @@ import { CopcStreamingLoader } from '../loaders/CopcStreamingLoader';
 import { PointCloudManager } from '../layers/PointCloudManager';
 import { ViewportManager } from './ViewportManager';
 import { PanelBuilder } from '../gui/PanelBuilder';
-import { generateId, getFilename } from '../utils/helpers';
+import { generateId, getFilename, computePercentileBounds } from '../utils/helpers';
 import { getAvailableClassifications } from '../colorizers/ColorScheme';
 
 /**
@@ -41,6 +41,7 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   pickInfoFields: undefined, // Show all fields by default
   zOffsetEnabled: false,
   zOffset: 0,
+  autoZOffset: true, // Automatically calculate Z offset from 2nd percentile
   copcLoadingMode: undefined, // Auto-detect: 'dynamic' for COPC URLs, 'full' otherwise
   streamingPointBudget: 5_000_000,
   streamingMaxConcurrentRequests: 4,
@@ -403,6 +404,28 @@ export class LidarControl implements IControl {
       // Add to manager
       this._pointCloudManager?.addPointCloud(id, data);
 
+      // Auto Z offset: calculate and apply based on 2nd percentile of elevation
+      let zOffsetBase: number | undefined;
+      let zOffset: number | undefined;
+      let zOffsetEnabled = this._state.zOffsetEnabled;
+
+      if (this._options.autoZOffset && data.positions && data.pointCount > 0) {
+        // Extract Z values and compute 2nd percentile (same as used for elevation coloring)
+        const zValues = new Float32Array(data.pointCount);
+        for (let i = 0; i < data.pointCount; i++) {
+          zValues[i] = data.positions[i * 3 + 2] ?? 0;
+        }
+        const percentileBounds = computePercentileBounds(zValues, 2, 98);
+        zOffsetBase = percentileBounds.min; // 2% percentile value (ground level)
+        // Apply negative offset to convert absolute elevation to relative height above ground
+        zOffset = -zOffsetBase;
+        zOffsetEnabled = true;
+        this._pointCloudManager?.setZOffset(zOffset);
+        console.log(`Auto Z offset applied: zOffsetBase=${zOffsetBase.toFixed(1)}, zOffset=${zOffset.toFixed(1)}, enabled=${zOffsetEnabled}`);
+      } else {
+        console.log('Auto Z offset skipped - conditions not met');
+      }
+
       onProgress(100, 'Complete!');
 
       // Create info object
@@ -425,13 +448,16 @@ export class LidarControl implements IControl {
         ...newClassifications,
       ]);
 
-      // Update state
+      // Update state (include z-offset values to trigger panel update)
       const pointClouds = [...this._state.pointClouds, info];
       this.setState({
         loading: false,
         pointClouds,
         activePointCloudId: id,
         availableClassifications: mergedClassifications,
+        zOffsetBase,
+        zOffset: zOffset ?? this._state.zOffset,
+        zOffsetEnabled,
       });
 
       // Emit load event
@@ -568,9 +594,30 @@ export class LidarControl implements IControl {
 
       this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
 
+      // Track if auto Z offset has been applied for this streaming dataset
+      let autoZOffsetApplied = false;
+
       // Setup callback for when points are loaded
       streamingLoader.setOnPointsLoaded((data) => {
         this._pointCloudManager?.updatePointCloud(id, data);
+
+        // Auto Z offset: use bounds.minZ from the COPC header (reliable source)
+        if (this._options.autoZOffset && !autoZOffsetApplied && data.bounds) {
+          // Use bounds.minZ as the ground level (from file header, always accurate)
+          const zOffsetBase = data.bounds.minZ;
+
+          // Apply negative offset to convert absolute elevation to relative height above ground
+          const zOffset = -zOffsetBase;
+          this._pointCloudManager?.setZOffset(zOffset);
+          console.log(`Auto Z offset applied (streaming): ${zOffset.toFixed(1)}m (ground level from bounds: ${zOffsetBase.toFixed(1)}m)`);
+          // Update state to trigger panel slider update
+          this.setState({
+            zOffsetBase,
+            zOffset,
+            zOffsetEnabled: true,
+          });
+          autoZOffsetApplied = true;
+        }
 
         // Extract and merge classifications from streamed data
         const newClassifications = getAvailableClassifications(data);
@@ -801,6 +848,25 @@ export class LidarControl implements IControl {
       // Add to manager
       this._pointCloudManager?.addPointCloud(id, data);
 
+      // Auto Z offset: calculate and apply based on 2nd percentile of elevation
+      let zOffsetBase: number | undefined;
+      let zOffset: number | undefined;
+      let zOffsetEnabled = this._state.zOffsetEnabled;
+
+      if (this._options.autoZOffset && data.positions && data.pointCount > 0) {
+        const zValues = new Float32Array(data.pointCount);
+        for (let i = 0; i < data.pointCount; i++) {
+          zValues[i] = data.positions[i * 3 + 2] ?? 0;
+        }
+        const percentileBounds = computePercentileBounds(zValues, 2, 98);
+        zOffsetBase = percentileBounds.min; // 2% percentile value (ground level)
+        // Apply negative offset to convert absolute elevation to relative height above ground
+        zOffset = -zOffsetBase;
+        zOffsetEnabled = true;
+        this._pointCloudManager?.setZOffset(zOffset);
+        console.log(`Auto Z offset applied (download): ${zOffset.toFixed(1)}m (ground level: ${zOffsetBase.toFixed(1)}m)`);
+      }
+
       this._panelBuilder?.updateLoadingProgress(100, 'Complete!');
 
       // Create info object
@@ -823,13 +889,16 @@ export class LidarControl implements IControl {
         ...newClassifications,
       ]);
 
-      // Update state
+      // Update state (include z-offset values to trigger panel update)
       const pointClouds = [...this._state.pointClouds, info];
       this.setState({
         loading: false,
         pointClouds,
         activePointCloudId: id,
         availableClassifications: mergedClassifications,
+        zOffsetBase,
+        zOffset: zOffset ?? this._state.zOffset,
+        zOffsetEnabled,
       });
 
       this._emitWithData('load', { pointCloud: info });
