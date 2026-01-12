@@ -163,6 +163,14 @@ export interface LidarControlOptions {
   zOffset?: number;
 
   /**
+   * Whether to automatically calculate and apply Z offset based on the 2nd percentile
+   * of elevation values. This brings point clouds down to ground level by offsetting
+   * the minimum elevation to near zero.
+   * @default true
+   */
+  autoZOffset?: boolean;
+
+  /**
    * Loading mode for COPC files: 'full' loads entire file, 'dynamic' streams based on viewport
    * @default 'full'
    */
@@ -212,6 +220,8 @@ export interface LidarState {
   zOffsetEnabled: boolean;
   /** Z offset value in meters */
   zOffset: number;
+  /** Base value for Z offset slider range (2% percentile of elevation) */
+  zOffsetBase?: number;
   /** Whether streaming mode is active */
   streamingActive?: boolean;
   /** Current streaming progress */

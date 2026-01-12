@@ -222,11 +222,18 @@ export class PointCloudManager {
   }
 
   /**
-   * Sets the opacity.
+   * Sets the global opacity for all point clouds.
+   * This also clears any per-layer opacity overrides so the global value takes effect.
    *
    * @param opacity - Opacity value (0-1)
    */
   setOpacity(opacity: number): void {
+    // Clear all per-layer opacity overrides so global opacity takes effect
+    for (const [id, pc] of this._pointClouds) {
+      if (pc.opacityOverride !== null) {
+        this._pointClouds.set(id, { ...pc, opacityOverride: null });
+      }
+    }
     this.updateStyle({ opacity });
   }
 

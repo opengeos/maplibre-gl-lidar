@@ -105,6 +105,21 @@ export class RangeSlider {
   }
 
   /**
+   * Sets the slider min and max bounds.
+   *
+   * @param min - New minimum value
+   * @param max - New maximum value
+   */
+  setBounds(min: number, max: number): void {
+    this._options.min = min;
+    this._options.max = max;
+    if (this._slider) {
+      this._slider.min = String(min);
+      this._slider.max = String(max);
+    }
+  }
+
+  /**
    * Formats the value for display.
    */
   private _formatValue(value: number): string {

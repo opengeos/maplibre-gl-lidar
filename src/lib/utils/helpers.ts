@@ -205,3 +205,4 @@ export function computePercentileBounds(
 
   return { min, max };
 }
+

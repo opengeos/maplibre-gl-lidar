@@ -159,6 +159,13 @@ export class PanelBuilder {
       this._zOffsetSliderContainer.style.display = state.zOffsetEnabled ? 'block' : 'none';
     }
     if (this._zOffsetSlider) {
+      // Update slider bounds centered around -zOffsetBase (the default z-offset)
+      if (state.zOffsetBase !== undefined) {
+        const defaultOffset = -state.zOffsetBase;
+        const sliderMin = defaultOffset - 100;
+        const sliderMax = defaultOffset + 100;
+        this._zOffsetSlider.setBounds(sliderMin, sliderMax);
+      }
       this._zOffsetSlider.setValue(state.zOffset ?? 0);
     }
 
@@ -463,18 +470,20 @@ export class PanelBuilder {
     sliderContainer.style.marginTop = '8px';
     this._zOffsetSliderContainer = sliderContainer;
 
-    // Get Z range from loaded point clouds for sensible slider bounds
-    const bounds = this._getElevationBounds();
-    const range = bounds.max - bounds.min;
-    const maxOffset = Math.max(100, Math.ceil(range)); // At least 100m range
+    // Slider range centered around -zOffsetBase (the default z-offset for relative height)
+    // Range: [-zOffsetBase - 100, -zOffsetBase + 100]
+    const zOffsetBase = this._state.zOffsetBase ?? 0;
+    const defaultOffset = -zOffsetBase;
+    const sliderMin = defaultOffset - 100;
+    const sliderMax = defaultOffset + 100;
 
     // Create slider
     this._zOffsetSlider = new RangeSlider({
       label: 'Offset (m)',
-      min: -maxOffset,
-      max: maxOffset,
+      min: sliderMin,
+      max: sliderMax,
       step: 1,
-      value: this._state.zOffset ?? 0,
+      value: this._state.zOffset ?? defaultOffset,
       onChange: (v) => this._callbacks.onZOffsetChange(v),
     });
 
