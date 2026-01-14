@@ -177,6 +177,18 @@ export interface LidarControlOptions {
   copcLoadingMode?: CopcLoadingMode;
 
   /**
+   * Whether 3D terrain is enabled
+   * @default false
+   */
+  terrainEnabled?: boolean;
+
+  /**
+   * Terrain exaggeration factor (1.0 = actual elevation)
+   * @default 1.0
+   */
+  terrainExaggeration?: number;
+
+  /**
    * Point budget for streaming mode (maximum points in memory)
    * @default 5000000
    */
@@ -235,6 +247,8 @@ export interface LidarState {
   hiddenClassifications: Set<number>;
   /** Set of classification codes present in loaded point cloud data */
   availableClassifications: Set<number>;
+  /** Whether 3D terrain is enabled */
+  terrainEnabled: boolean;
 }
 
 /**

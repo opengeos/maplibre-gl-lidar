@@ -23,6 +23,7 @@ const DEFAULT_STATE: LidarState = {
   zOffset: 0,
   hiddenClassifications: new Set(),
   availableClassifications: new Set(),
+  terrainEnabled: false,
 };
 
 /**
@@ -136,6 +137,13 @@ export function useLidarState(initialState?: Partial<LidarState>) {
   }, []);
 
   /**
+   * Sets whether 3D terrain is enabled
+   */
+  const setTerrainEnabled = useCallback((terrainEnabled: boolean) => {
+    setState((prev) => ({ ...prev, terrainEnabled }));
+  }, []);
+
+  /**
    * Resets the state to default values
    */
   const reset = useCallback(() => {
@@ -162,6 +170,7 @@ export function useLidarState(initialState?: Partial<LidarState>) {
     setPointBudget,
     setZOffsetEnabled,
     setZOffset,
+    setTerrainEnabled,
     reset,
     toggle,
   };

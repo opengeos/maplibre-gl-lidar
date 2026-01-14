@@ -47,6 +47,8 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   streamingPointBudget: 5_000_000,
   streamingMaxConcurrentRequests: 4,
   streamingViewportDebounceMs: 150,
+  terrainEnabled: false,
+  terrainExaggeration: 1.0,
 };
 
 /**
@@ -124,6 +126,7 @@ export class LidarControl implements IControl {
       zOffset: this._options.zOffset ?? 0,
       hiddenClassifications: new Set(),
       availableClassifications: new Set(),
+      terrainEnabled: this._options.terrainEnabled ?? false,
     };
     this._loader = new PointCloudLoader();
   }
@@ -175,6 +178,11 @@ export class LidarControl implements IControl {
       requestAnimationFrame(() => {
         this._updatePanelPosition();
       });
+    }
+
+    // Apply initial terrain state if enabled in options
+    if (this._state.terrainEnabled) {
+      this.setTerrain(true);
     }
 
     return this._container;
@@ -1473,6 +1481,51 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Enables or disables 3D terrain visualization.
+   *
+   * @param enabled - Whether terrain should be enabled
+   */
+  setTerrain(enabled: boolean): void {
+    if (!this._map) return;
+
+    this._state.terrainEnabled = enabled;
+
+    if (enabled) {
+      // Add terrain source if not present (using AWS Terrain Tiles - free)
+      if (!this._map.getSource('terrain-dem')) {
+        this._map.addSource('terrain-dem', {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256,
+          maxzoom: 15,
+        });
+      }
+
+      // Enable terrain
+      this._map.setTerrain({
+        source: 'terrain-dem',
+        exaggeration: this._options.terrainExaggeration ?? 1.0,
+      });
+    } else {
+      // Disable terrain
+      this._map.setTerrain(null);
+    }
+
+    this._emit('stylechange');
+    this._emit('statechange');
+  }
+
+  /**
+   * Gets whether 3D terrain is currently enabled.
+   *
+   * @returns True if terrain is enabled
+   */
+  getTerrain(): boolean {
+    return this._state.terrainEnabled;
+  }
+
+  /**
    * Gets information about loaded point clouds.
    *
    * @returns Array of point cloud info objects
@@ -1633,6 +1686,7 @@ export class LidarControl implements IControl {
         onClassificationToggle: (code, visible) => this._toggleClassification(code, visible),
         onClassificationShowAll: () => this._showAllClassifications(),
         onClassificationHideAll: () => this._hideAllClassifications(),
+        onTerrainChange: (enabled) => this.setTerrain(enabled),
       },
       this._state
     );
