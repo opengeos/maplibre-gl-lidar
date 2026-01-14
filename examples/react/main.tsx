@@ -65,8 +65,9 @@ function App() {
             'raster-opacity': 1,
           },
           layout: {
-            visibility: 'none', // Hidden by default
+            visibility: 'visible', // Hidden by default
           },
+          minzoom: 16,
         },
       );
 

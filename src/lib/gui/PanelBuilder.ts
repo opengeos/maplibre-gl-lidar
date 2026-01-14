@@ -773,7 +773,10 @@ export class PanelBuilder {
     removeBtn.className = 'lidar-pointcloud-action remove';
     removeBtn.textContent = 'Remove';
     removeBtn.title = 'Remove point cloud';
-    removeBtn.addEventListener('click', () => this._callbacks.onUnload(pc.id));
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent click-outside handler from collapsing panel
+      this._callbacks.onUnload(pc.id);
+    });
 
     actions.appendChild(zoomBtn);
     actions.appendChild(removeBtn);

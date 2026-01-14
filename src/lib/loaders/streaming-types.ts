@@ -49,7 +49,7 @@ export interface StreamingLoaderOptions {
 /**
  * State of a node in the streaming cache
  */
-export type NodeState = 'pending' | 'loading' | 'loaded' | 'error';
+export type NodeState = 'pending' | 'loading' | 'loaded' | 'error' | 'subtree';
 
 /**
  * Cached node data

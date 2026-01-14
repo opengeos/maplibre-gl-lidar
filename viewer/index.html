@@ -131,6 +131,23 @@
       text-decoration: underline;
     }
 
+    .powered-by {
+      margin-top: 20px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+    }
+
+    .powered-by a {
+      color: rgba(255, 255, 255, 0.9);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .powered-by a:hover {
+      color: white;
+      text-decoration: underline;
+    }
+
     /* Map viewer styles */
     #map {
       width: 100vw;
@@ -171,7 +188,7 @@
   <!-- URL Input Form -->
   <div id="url-form-container">
     <h1>LiDAR Point Cloud Viewer</h1>
-    <p class="subtitle">Enter a COPC LAZ file URL to visualize</p>
+    <p class="subtitle">Enter a COPC LAZ or EPT URL to visualize</p>
 
     <form id="url-form">
       <input
@@ -194,10 +211,20 @@
       <button type="button" data-url="https://data.opengeos.org/USGS_LPC_TX_CoastalRegion_2018_A18_stratmap18-50cm-2995201a1.copc.laz">
         Texas Coastal Region
       </button>
+      <button type="button" data-url="https://na-c.entwine.io/dublin/ept.json">
+        Dublin (EPT)
+      </button>
+      <button type="button" data-url="https://na-c.entwine.io/red-rocks/ept.json">
+        Red Rocks (EPT)
+      </button>
     </div>
 
     <div class="back-link">
       <a href="../">&larr; Back to examples</a>
+    </div>
+
+    <div class="powered-by">
+      Powered by <a href="https://github.com/opengeos/maplibre-gl-lidar" target="_blank">maplibre-gl-lidar</a>
     </div>
   </div>
 

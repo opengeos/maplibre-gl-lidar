@@ -49,8 +49,9 @@ map.on('load', () => {
         'raster-opacity': 1,
       },
       layout: {
-        visibility: 'none', // Hidden by default
+        visibility: 'visible', 
       },
+      minzoom: 16,
     },
   );
 

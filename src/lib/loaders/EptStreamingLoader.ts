@@ -552,13 +552,24 @@ export class EptStreamingLoader {
 
       // Process hierarchy entries
       for (const [nodeKey, value] of Object.entries(hierarchy)) {
+        const keyArray = this._parseNodeKey(nodeKey);
+        const { bounds, boundsWgs84 } = this._calculateNodeBounds(keyArray);
+
         if (value === -1) {
-          // Subtree root - mark for later loading
+          // Subtree root - create a placeholder entry and mark for later loading
           this._subtreeRoots.add(nodeKey);
+          if (!this._nodeCache.has(nodeKey)) {
+            this._nodeCache.set(nodeKey, {
+              key: nodeKey,
+              keyArray,
+              state: 'subtree', // Special state for subtree roots
+              pointCount: 0,
+              bounds,
+              boundsWgs84,
+            });
+          }
         } else if (value > 0 && !this._nodeCache.has(nodeKey)) {
           // Create node cache entry
-          const keyArray = this._parseNodeKey(nodeKey);
-          const { bounds, boundsWgs84 } = this._calculateNodeBounds(keyArray);
           this._nodeCache.set(nodeKey, {
             key: nodeKey,
             keyArray,
@@ -603,15 +614,52 @@ export class EptStreamingLoader {
       throw new Error('EptStreamingLoader not initialized. Call initialize() first.');
     }
 
-    // Ensure hierarchy is loaded
+    // Ensure root hierarchy is loaded
     await this._ensureHierarchyLoaded();
 
-    const nodesToLoad: EptCachedNode[] = [];
     const targetDepth = viewport.targetDepth;
 
-    // Load all nodes that intersect viewport up to targetDepth + 1
+    // First pass: find subtree nodes that intersect viewport and load their hierarchies
+    // This handles large datasets where data is nested in subtrees
+    const subtreesToLoad: string[] = [];
     for (const [, node] of this._nodeCache) {
       const depth = node.keyArray[0];
+
+      // Only check subtrees within our target depth range
+      if (depth > targetDepth + 2) continue;
+
+      // Check if this subtree intersects viewport
+      if (node.state === 'subtree' && this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+        if (!this._hierarchyCache.has(node.key)) {
+          subtreesToLoad.push(node.key);
+        }
+      }
+    }
+
+    // Load intersecting subtree hierarchies (limit to prevent too many requests)
+    const maxSubtreesToLoad = 10;
+    for (const subtreeKey of subtreesToLoad.slice(0, maxSubtreesToLoad)) {
+      await this._loadHierarchy(subtreeKey);
+    }
+
+    // Second pass: collect loadable nodes
+    const nodesToLoad: EptCachedNode[] = [];
+    const now = Date.now();
+    const retryCooldownMs = 5000; // Wait 5 seconds before retrying failed nodes
+
+    for (const [, node] of this._nodeCache) {
+      const depth = node.keyArray[0];
+
+      // Skip subtree placeholders (they have no point data)
+      if (node.state === 'subtree') continue;
+
+      // Skip permanently failed nodes
+      if (node.state === 'error') continue;
+
+      // Skip nodes that recently failed (cooldown period)
+      if (node.lastFailedAt && (now - node.lastFailedAt) < retryCooldownMs) {
+        continue;
+      }
 
       // Skip nodes deeper than we need
       if (depth > targetDepth + 1) continue;
@@ -693,7 +741,8 @@ export class EptStreamingLoader {
     // Reserve buffer space before async operations
     const startIndex = this._totalLoadedPoints;
     node.bufferStartIndex = startIndex;
-    this._totalLoadedPoints += node.pointCount;
+    const reservedPoints = node.pointCount;
+    this._totalLoadedPoints += reservedPoints;
 
     try {
       const dataUrl = this._getDataUrl(node.key);
@@ -714,10 +763,30 @@ export class EptStreamingLoader {
 
       this._scheduleLayerUpdate();
     } catch (error) {
-      node.state = 'error';
-      node.error = error instanceof Error ? error.message : String(error);
-      console.warn(`Failed to load EPT node ${node.key}:`, error);
-      this._emit('error', error as Error);
+      // Release the reserved buffer space on failure
+      this._totalLoadedPoints -= reservedPoints;
+      node.bufferStartIndex = undefined;
+
+      // Track retry count and set cooldown timestamp
+      node.retryCount = (node.retryCount || 0) + 1;
+      node.lastFailedAt = Date.now();
+      const maxRetries = 3;
+
+      if (node.retryCount < maxRetries) {
+        // Mark as pending to allow retry after cooldown
+        node.state = 'pending';
+        node.error = error instanceof Error ? error.message : String(error);
+
+        // Only log first failure
+        if (node.retryCount === 1) {
+          console.warn(`Failed to load EPT node ${node.key} (will retry): ${node.error}`);
+        }
+      } else {
+        // Max retries reached, mark as permanently failed
+        node.state = 'error';
+        node.error = error instanceof Error ? error.message : String(error);
+        console.warn(`Failed to load EPT node ${node.key} after ${maxRetries} attempts: ${node.error}`);
+      }
     } finally {
       this._activeRequests--;
       this.loadQueuedNodes();

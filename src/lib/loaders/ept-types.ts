@@ -84,6 +84,10 @@ export interface EptCachedNode {
   bufferStartIndex?: number;
   /** Error message if state is 'error' */
   error?: string;
+  /** Number of load retry attempts */
+  retryCount?: number;
+  /** Timestamp of last failed attempt (for retry cooldown) */
+  lastFailedAt?: number;
 }
 
 /**
