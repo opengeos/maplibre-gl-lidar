@@ -50,51 +50,53 @@ npm install maplibre-gl-lidar
 ### Basic Usage (Vanilla JS/TypeScript)
 
 ```typescript
-import maplibregl from 'maplibre-gl';
-import { LidarControl } from 'maplibre-gl-lidar';
-import 'maplibre-gl-lidar/style.css';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibregl from "maplibre-gl";
+import { LidarControl } from "maplibre-gl-lidar";
+import "maplibre-gl-lidar/style.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 const map = new maplibregl.Map({
-  container: 'map',
-  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  container: "map",
+  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   center: [-122.4, 37.8],
   zoom: 12,
   pitch: 60,
   maxPitch: 85, // Allow higher pitch for better 3D viewing
 });
 
-map.on('load', () => {
+map.on("load", () => {
   // Add the LiDAR control
   const lidarControl = new LidarControl({
-    title: 'LiDAR Viewer',
+    title: "LiDAR Viewer",
     collapsed: true,
     pointSize: 2,
-    colorScheme: 'elevation',
+    colorScheme: "elevation",
     pickable: true, // Enable point picking for hover tooltips
   });
 
-  map.addControl(lidarControl, 'top-right');
+  map.addControl(lidarControl, "top-right");
 
   // Listen for events
-  lidarControl.on('load', (event) => {
-    console.log('Point cloud loaded:', event.pointCloud);
+  lidarControl.on("load", (event) => {
+    console.log("Point cloud loaded:", event.pointCloud);
     lidarControl.flyToPointCloud();
   });
 
   // Load a point cloud programmatically
-  lidarControl.loadPointCloud('https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz');
+  lidarControl.loadPointCloud(
+    "https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz"
+  );
 });
 ```
 
 ### React Usage
 
 ```tsx
-import { useEffect, useRef, useState } from 'react';
-import maplibregl, { Map } from 'maplibre-gl';
-import { LidarControlReact, useLidarState } from 'maplibre-gl-lidar/react';
-import 'maplibre-gl-lidar/style.css';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { useEffect, useRef, useState } from "react";
+import maplibregl, { Map } from "maplibre-gl";
+import { LidarControlReact, useLidarState } from "maplibre-gl-lidar/react";
+import "maplibre-gl-lidar/style.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -106,28 +108,28 @@ function App() {
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
       center: [-122.4, 37.8],
       zoom: 12,
       pitch: 60,
       maxPitch: 85, // Allow higher pitch for better 3D viewing
     });
 
-    mapInstance.on('load', () => setMap(mapInstance));
+    mapInstance.on("load", () => setMap(mapInstance));
 
     return () => mapInstance.remove();
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100vh' }}>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+    <div style={{ width: "100%", height: "100vh" }}>
+      <div ref={mapContainer} style={{ width: "100%", height: "100%" }} />
       {map && (
         <LidarControlReact
           map={map}
           title="LiDAR Viewer"
           pointSize={state.pointSize}
           colorScheme={state.colorScheme}
-          onLoad={(pc) => console.log('Loaded:', pc)}
+          onLoad={(pc) => console.log("Loaded:", pc)}
           defaultUrl="https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz"
         />
       )}
@@ -147,37 +149,37 @@ The main control class implementing MapLibre's `IControl` interface.
 ```typescript
 interface LidarControlOptions {
   // Panel settings
-  collapsed?: boolean;        // Start collapsed (default: true)
-  position?: string;          // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  title?: string;             // Panel title (default: 'LiDAR Viewer')
-  panelWidth?: number;        // Panel width in pixels (default: 365)
-  panelMaxHeight?: number;    // Panel max height with scrollbar (default: 500)
-  className?: string;         // Custom CSS class
+  collapsed?: boolean; // Start collapsed (default: true)
+  position?: string; // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  title?: string; // Panel title (default: 'LiDAR Viewer')
+  panelWidth?: number; // Panel width in pixels (default: 365)
+  panelMaxHeight?: number; // Panel max height with scrollbar (default: 500)
+  className?: string; // Custom CSS class
 
   // Point cloud styling
-  pointSize?: number;         // Point size in pixels (default: 2)
-  opacity?: number;           // Opacity 0-1 (default: 1.0)
-  colorScheme?: ColorScheme;  // Color scheme (default: 'elevation')
-  usePercentile?: boolean;    // Use 2-98% percentile for coloring (default: true)
-  pointBudget?: number;       // Max points to display (default: 1000000)
+  pointSize?: number; // Point size in pixels (default: 2)
+  opacity?: number; // Opacity 0-1 (default: 1.0)
+  colorScheme?: ColorScheme; // Color scheme (default: 'elevation')
+  usePercentile?: boolean; // Use 2-98% percentile for coloring (default: true)
+  pointBudget?: number; // Max points to display (default: 1000000)
 
   // Filters and adjustments
-  elevationRange?: [number, number] | null;  // Elevation filter
-  zOffsetEnabled?: boolean;   // Enable Z offset adjustment (default: false)
-  zOffset?: number;           // Z offset in meters (default: 0)
+  elevationRange?: [number, number] | null; // Elevation filter
+  zOffsetEnabled?: boolean; // Enable Z offset adjustment (default: false)
+  zOffset?: number; // Z offset in meters (default: 0)
 
   // Interaction
-  pickable?: boolean;         // Enable point picking/hover tooltips (default: false)
-  pickInfoFields?: string[];  // Fields to show in tooltip (default: all)
+  pickable?: boolean; // Enable point picking/hover tooltips (default: false)
+  pickInfoFields?: string[]; // Fields to show in tooltip (default: all)
 
   // Behavior
-  autoZoom?: boolean;         // Auto zoom to data after loading (default: true)
+  autoZoom?: boolean; // Auto zoom to data after loading (default: true)
 
   // COPC Streaming (dynamic loading)
-  copcLoadingMode?: 'full' | 'dynamic';  // Loading mode for COPC files (default: 'dynamic')
-  streamingPointBudget?: number;         // Max points for streaming (default: 5000000)
+  copcLoadingMode?: "full" | "dynamic"; // Loading mode for COPC files (default: 'dynamic')
+  streamingPointBudget?: number; // Max points for streaming (default: 5000000)
   streamingMaxConcurrentRequests?: number; // Concurrent node requests (default: 4)
-  streamingViewportDebounceMs?: number;  // Viewport change debounce (default: 150)
+  streamingViewportDebounceMs?: number; // Viewport change debounce (default: 150)
 }
 ```
 
@@ -261,8 +263,8 @@ By default, elevation and intensity coloring uses the 2nd-98th percentile range 
 ```typescript
 // Percentile coloring is enabled by default
 const control = new LidarControl({
-  colorScheme: 'elevation',
-  usePercentile: true,  // default
+  colorScheme: "elevation",
+  usePercentile: true, // default
 });
 
 // Disable to use full value range (min-max)
@@ -298,7 +300,12 @@ const control = new LidarControl({ pickable: true });
 control.setPickable(true);
 
 // Optionally filter which fields to display
-control.setPickInfoFields(['Classification', 'Intensity', 'GpsTime', 'ReturnNumber']);
+control.setPickInfoFields([
+  "Classification",
+  "Intensity",
+  "GpsTime",
+  "ReturnNumber",
+]);
 ```
 
 ### Z Offset
@@ -331,6 +338,7 @@ When using the "Classification" color scheme, an interactive legend appears show
 - A checkbox to toggle visibility
 
 **Features:**
+
 - **Show All / Hide All buttons** - Quickly toggle all classifications at once
 - **Individual toggles** - Show or hide specific classification types
 - **Auto-detection** - Classifications are automatically detected from loaded data
@@ -341,24 +349,24 @@ When using the "Classification" color scheme, an interactive legend appears show
 // The legend automatically appears with checkboxes for each class
 
 // Programmatically control visibility
-control.setColorScheme('classification');
+control.setColorScheme("classification");
 
 // Hide specific classifications (e.g., hide noise points)
-control.setClassificationVisibility(7, false);  // Hide "Low Point (Noise)"
+control.setClassificationVisibility(7, false); // Hide "Low Point (Noise)"
 control.setClassificationVisibility(18, false); // Hide "High Noise"
 
 // Show only ground and buildings
 control.hideAllClassifications();
-control.setClassificationVisibility(2, true);  // Ground
-control.setClassificationVisibility(6, true);  // Building
+control.setClassificationVisibility(2, true); // Ground
+control.setClassificationVisibility(6, true); // Building
 
 // Get available classifications in the data
 const available = control.getAvailableClassifications();
-console.log('Classifications:', available); // [2, 3, 4, 5, 6, ...]
+console.log("Classifications:", available); // [2, 3, 4, 5, 6, ...]
 
 // Get currently hidden classifications
 const hidden = control.getHiddenClassifications();
-console.log('Hidden:', hidden); // [7, 18]
+console.log("Hidden:", hidden); // [7, 18]
 ```
 
 **ASPRS Classification Codes:**
@@ -378,12 +386,14 @@ console.log('Hidden:', hidden); // [7, 18]
 For large COPC (Cloud Optimized Point Cloud) files, dynamic streaming loads only the points visible in the current viewport, dramatically reducing initial load time and memory usage.
 
 **Key features:**
+
 - **Viewport-based loading** - Only loads octree nodes visible in the current map view
 - **Level-of-detail (LOD)** - Automatically selects appropriate detail level based on zoom
 - **Center-first priority** - Points near the viewport center load first
 - **Point budget** - Limits total points in memory (default: 5 million)
 
 **How it works:**
+
 1. When loading a COPC file (from URL or local file), dynamic mode is used by default
 2. As you pan/zoom the map, new nodes are streamed based on viewport
 3. Deeper octree levels (more detail) load as you zoom in
@@ -392,20 +402,21 @@ For large COPC (Cloud Optimized Point Cloud) files, dynamic streaming loads only
 ```typescript
 // Dynamic loading is the default for COPC files
 const control = new LidarControl();
-control.loadPointCloud('https://example.com/large-pointcloud.copc.laz');
+control.loadPointCloud("https://example.com/large-pointcloud.copc.laz");
 
 // Explicitly set loading mode
 const control = new LidarControl({
-  copcLoadingMode: 'dynamic',  // or 'full' for complete load
-  streamingPointBudget: 10_000_000,  // 10 million points max
+  copcLoadingMode: "dynamic", // or 'full' for complete load
+  streamingPointBudget: 10_000_000, // 10 million points max
 });
 
 // Override per-load
-control.loadPointCloud(file, { loadingMode: 'full' });  // Force full load
-control.loadPointCloud(url, { loadingMode: 'dynamic' }); // Force streaming
+control.loadPointCloud(file, { loadingMode: "full" }); // Force full load
+control.loadPointCloud(url, { loadingMode: "dynamic" }); // Force streaming
 ```
 
 **Loading modes:**
+
 - `'dynamic'` (default for COPC) - Stream nodes based on viewport, ideal for large files
 - `'full'` - Load entire point cloud upfront, better for small files
 
@@ -416,6 +427,7 @@ control.loadPointCloud(url, { loadingMode: 'dynamic' }); // Force streaming
 maplibre-gl-lidar supports [Entwine Point Tile (EPT)](https://entwine.io/en/latest/entwine-point-tile.html) datasets, a widely-used format for serving large point clouds over HTTP with viewport-based streaming.
 
 **Key features:**
+
 - **Directory-based format** - Metadata in ept.json, hierarchy in ept-hierarchy/, data in ept-data/
 - **Viewport-based streaming** - Points load dynamically based on current map view
 - **LAZ compression** - Efficient data transfer using LAZ compression
@@ -425,15 +437,19 @@ maplibre-gl-lidar supports [Entwine Point Tile (EPT)](https://entwine.io/en/late
 
 ```typescript
 // Load EPT dataset by URL (automatically detected via ept.json)
-lidarControl.loadPointCloud('https://na-c.entwine.io/dublin/ept.json');
+lidarControl.loadPointCloud("https://na-c.entwine.io/dublin/ept.json");
 
 // Or load programmatically
-lidarControl.loadPointCloudEptStreaming('https://na-c.entwine.io/dublin/ept.json', {
-  pointBudget: 5_000_000,  // Max points in memory
-});
+lidarControl.loadPointCloudEptStreaming(
+  "https://na-c.entwine.io/dublin/ept.json",
+  {
+    pointBudget: 5_000_000, // Max points in memory
+  }
+);
 ```
 
 **Sample EPT datasets:**
+
 - Dublin, Ireland: `https://na-c.entwine.io/dublin/ept.json`
 - New York City (4.7B points): `https://na-c.entwine.io/nyc/ept.json`
 - Red Rocks: `https://na-c.entwine.io/red-rocks/ept.json`
@@ -515,12 +531,11 @@ docker run -p 8080:80 maplibre-gl-lidar
 
 ### Available Tags
 
-| Tag | Description |
-|-----|-------------|
-| `latest` | Latest release |
-| `x.y.z` | Specific version (e.g., `1.0.0`) |
-| `x.y` | Minor version (e.g., `1.0`) |
-
+| Tag      | Description                      |
+| -------- | -------------------------------- |
+| `latest` | Latest release                   |
+| `x.y.z`  | Specific version (e.g., `1.0.0`) |
+| `x.y`    | Minor version (e.g., `1.0`)      |
 
 ## Dependencies
 
@@ -537,4 +552,8 @@ MIT
 
 ## Credits
 
-The sample dataset [autzen-classified.copc.laz](https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz) is from [Hobu, Inc.](https://hobu.co). Credits to [Howard Butler](https://github.com/hobu).
+- Microsoft Planetary Computer: [USGS 3DEP Lidar Point Cloud Dataset](https://planetarycomputer.microsoft.com/dataset/usgs-3dep-lidar)
+- AWS Open Data: [USGS 3DEP LiDAR Point Clouds](https://registry.opendata.aws/usgs-lidar)
+- [Hobu, Inc.](https://hobu.co)
+- [COPC.io](https://copc.io)
+- [Entwine](https://entwine.io)
