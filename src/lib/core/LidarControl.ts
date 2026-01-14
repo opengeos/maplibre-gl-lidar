@@ -1439,6 +1439,12 @@ export class LidarControl implements IControl {
   setPickable(pickable: boolean): void {
     this._state.pickable = pickable;
     this._pointCloudManager?.setPickable(pickable);
+
+    // Hide tooltip when disabling pickable
+    if (!pickable && this._tooltip) {
+      this._tooltip.style.display = 'none';
+    }
+
     this._emit('stylechange');
     this._emit('statechange');
   }
