@@ -49,7 +49,7 @@ map.on('load', () => {
         'raster-opacity': 1,
       },
       layout: {
-        visibility: 'visible', 
+        visibility: 'visible',
       },
       minzoom: 16,
     },
