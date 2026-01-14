@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MapLibre GL LiDAR - EPT Example</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #map {
+      width: 100vw;
+      height: 100vh;
+    }
+    .info-box {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: white;
+      padding: 12px 16px;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-size: 13px;
+      max-width: 350px;
+      z-index: 1;
+    }
+    .info-box h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+    }
+    .info-box p {
+      margin: 0 0 8px 0;
+      color: #666;
+      line-height: 1.5;
+    }
+    .info-box code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="info-box">
+    <h3>EPT (Entwine Point Tile) Example</h3>
+    <p>This example loads an Entwine Point Tile dataset from <code>na-c.entwine.io</code>. EPT is a format for serving large point clouds over HTTP with viewport-based streaming.</p>
+    <p>Points are loaded dynamically as you pan and zoom the map.</p>
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

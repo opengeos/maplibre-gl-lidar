@@ -236,7 +236,7 @@ export class PanelBuilder {
 
     const urlLabel = document.createElement('label');
     urlLabel.className = 'lidar-control-label';
-    urlLabel.textContent = 'Or load from URL';
+    urlLabel.textContent = 'Load COPC or EPT from URL';
     urlGroup.appendChild(urlLabel);
 
     const urlRow = document.createElement('div');

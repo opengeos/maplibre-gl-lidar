@@ -7,6 +7,7 @@ export { DeckOverlay } from './lib/core/DeckOverlay';
 export { ViewportManager } from './lib/core/ViewportManager';
 export { PointCloudLoader } from './lib/loaders/PointCloudLoader';
 export { CopcStreamingLoader } from './lib/loaders/CopcStreamingLoader';
+export { EptStreamingLoader } from './lib/loaders/EptStreamingLoader';
 export { PointCloudManager } from './lib/layers/PointCloudManager';
 export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
 
@@ -44,6 +45,14 @@ export type {
   StreamingLoaderEventHandler,
   StreamingLoadOptions,
 } from './lib/loaders/streaming-types';
+
+export type {
+  EptMetadata,
+  EptDimension,
+  EptSrs,
+  EptHierarchy,
+  EptCachedNode,
+} from './lib/loaders/ept-types';
 
 export type {
   PointCloudLayerOptions,

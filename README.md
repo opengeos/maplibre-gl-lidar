@@ -9,6 +9,7 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 
 - Load and visualize LAS/LAZ/COPC point cloud files (LAS 1.0 - 1.4)
 - **Dynamic COPC streaming** - viewport-based loading for large cloud-optimized point clouds
+- **EPT (Entwine Point Tile) support** - stream large point cloud datasets from EPT servers
 - Multiple color schemes: elevation, intensity, classification, RGB
 - **Classification legend with toggle** - interactive legend to show/hide individual classification types
 - **Percentile-based coloring** - use 2-98% percentile range for better color distribution (clips outliers)
@@ -410,6 +411,35 @@ control.loadPointCloud(url, { loadingMode: 'dynamic' }); // Force streaming
 
 **Note:** Non-COPC files (regular LAS/LAZ) always use full loading mode since they don't have the octree structure required for streaming.
 
+### EPT (Entwine Point Tile) Support
+
+maplibre-gl-lidar supports [Entwine Point Tile (EPT)](https://entwine.io/en/latest/entwine-point-tile.html) datasets, a widely-used format for serving large point clouds over HTTP with viewport-based streaming.
+
+**Key features:**
+- **Directory-based format** - Metadata in ept.json, hierarchy in ept-hierarchy/, data in ept-data/
+- **Viewport-based streaming** - Points load dynamically based on current map view
+- **LAZ compression** - Efficient data transfer using LAZ compression
+- **Automatic CRS transformation** - Coordinates transformed from source CRS to WGS84
+
+**Loading EPT data:**
+
+```typescript
+// Load EPT dataset by URL (automatically detected via ept.json)
+lidarControl.loadPointCloud('https://na-c.entwine.io/dublin/ept.json');
+
+// Or load programmatically
+lidarControl.loadPointCloudEptStreaming('https://na-c.entwine.io/dublin/ept.json', {
+  pointBudget: 5_000_000,  // Max points in memory
+});
+```
+
+**Sample EPT datasets:**
+- Dublin, Ireland: `https://na-c.entwine.io/dublin/ept.json`
+- New York City (4.7B points): `https://na-c.entwine.io/nyc/ept.json`
+- Red Rocks: `https://na-c.entwine.io/red-rocks/ept.json`
+
+**Note:** EPT datasets require CORS support from the server. The sample datasets from entwine.io are CORS-enabled.
+
 ### React Hooks
 
 #### useLidarState
@@ -445,6 +475,7 @@ console.log(`Loaded ${data.pointCount} points`);
 - LAS 1.0 - 1.4 (all versions supported via copc.js + loaders.gl fallback)
 - LAZ (compressed LAS)
 - COPC (Cloud Optimized Point Cloud) - with dynamic streaming support
+- EPT (Entwine Point Tile) - viewport-based streaming from HTTP servers
 
 **Note:** LAS 1.2 and 1.4 are loaded using copc.js for optimal performance. LAS 1.0, 1.1, and 1.3 files automatically fall back to @loaders.gl/las.
 

@@ -14,6 +14,7 @@ import type { StreamingLoaderOptions, ViewportInfo, StreamingProgressEvent } fro
 import { DeckOverlay } from './DeckOverlay';
 import { PointCloudLoader } from '../loaders/PointCloudLoader';
 import { CopcStreamingLoader } from '../loaders/CopcStreamingLoader';
+import { EptStreamingLoader } from '../loaders/EptStreamingLoader';
 import { PointCloudManager } from '../layers/PointCloudManager';
 import { ViewportManager } from './ViewportManager';
 import { PanelBuilder } from '../gui/PanelBuilder';
@@ -93,6 +94,7 @@ export class LidarControl implements IControl {
 
   // Streaming components - Maps to support multiple streaming datasets
   private _streamingLoaders: Map<string, CopcStreamingLoader> = new Map();
+  private _eptStreamingLoaders: Map<string, EptStreamingLoader> = new Map();
   private _viewportManagers: Map<string, ViewportManager> = new Map();
 
   /**
@@ -347,6 +349,16 @@ export class LidarControl implements IControl {
     source: string | File | ArrayBuffer,
     options?: { loadingMode?: CopcLoadingMode }
   ): Promise<PointCloudInfo> {
+    // Check if this is an EPT dataset (URL ending with ept.json)
+    const isEptUrl =
+      typeof source === 'string' &&
+      (source.endsWith('/ept.json') || source.includes('/ept.json?'));
+
+    // Route EPT URLs to EPT streaming loader
+    if (isEptUrl) {
+      return this.loadPointCloudEptStreaming(source as string);
+    }
+
     // Check if this is a COPC file
     const isCopcUrl =
       typeof source === 'string' &&
@@ -509,8 +521,8 @@ export class LidarControl implements IControl {
    */
   unloadPointCloud(id?: string): void {
     if (id) {
-      // Check if this is a streaming point cloud
-      if (this._streamingLoaders.has(id)) {
+      // Check if this is a streaming point cloud (COPC or EPT)
+      if (this._streamingLoaders.has(id) || this._eptStreamingLoaders.has(id)) {
         this.stopStreaming(id);
         return;
       }
@@ -785,6 +797,224 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Loads an EPT (Entwine Point Tile) dataset using streaming (on-demand) loading.
+   * Points are loaded dynamically based on viewport and zoom level.
+   *
+   * @param eptUrl - URL to ept.json file
+   * @param options - Optional streaming options
+   * @returns Promise resolving to initial point cloud info
+   */
+  async loadPointCloudEptStreaming(
+    eptUrl: string,
+    options?: StreamingLoaderOptions
+  ): Promise<PointCloudInfo> {
+    const id = generateId('ept-stream');
+    const name = getFilename(eptUrl.replace('/ept.json', ''));
+
+    this.setState({ loading: true, error: null, streamingActive: true });
+    this._emit('loadstart');
+    this._emit('streamingstart');
+
+    try {
+      // Create EPT streaming loader
+      const eptLoader = new EptStreamingLoader(eptUrl, {
+        pointBudget: options?.pointBudget ?? this._options.streamingPointBudget,
+        maxConcurrentRequests:
+          options?.maxConcurrentRequests ?? this._options.streamingMaxConcurrentRequests,
+        viewportDebounceMs:
+          options?.viewportDebounceMs ?? this._options.streamingViewportDebounceMs,
+        minDetailZoom: options?.minDetailZoom ?? 10,
+        maxOctreeDepth: options?.maxOctreeDepth ?? 20,
+      });
+
+      // Initialize - reads ept.json metadata
+      this._panelBuilder?.updateLoadingProgress(10, 'Initializing EPT dataset...');
+      const { bounds, totalPoints, hasRGB, spacing } = await eptLoader.initialize();
+
+      this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
+
+      // Track if auto Z offset has been applied
+      let autoZOffsetApplied = false;
+
+      // Setup callback for when points are loaded
+      eptLoader.setOnPointsLoaded((data) => {
+        this._pointCloudManager?.updatePointCloud(id, data);
+
+        // Auto Z offset
+        if (this._options.autoZOffset && !autoZOffsetApplied && data.bounds) {
+          const zOffsetBase = data.bounds.minZ;
+          const zOffset = -zOffsetBase;
+          this._pointCloudManager?.setZOffset(zOffset);
+          console.log(`Auto Z offset applied (EPT streaming): ${zOffset.toFixed(1)}m`);
+          this.setState({
+            zOffsetBase,
+            zOffset,
+            zOffsetEnabled: true,
+          });
+          autoZOffsetApplied = true;
+        }
+
+        // Extract and merge classifications
+        const newClassifications = getAvailableClassifications(data);
+        if (newClassifications.size > 0) {
+          const mergedClassifications = new Set([
+            ...this._state.availableClassifications,
+            ...newClassifications,
+          ]);
+          if (mergedClassifications.size > this._state.availableClassifications.size) {
+            this.setState({ availableClassifications: mergedClassifications });
+          }
+        }
+      });
+
+      // Setup event handlers
+      eptLoader.on('progress', (_, data) => {
+        const progress = data as StreamingProgressEvent;
+        this.setState({
+          streamingProgress: {
+            loadedNodes: progress.loadedNodes,
+            loadedPoints: progress.loadedPoints,
+            queueSize: progress.queueSize,
+            isLoading: progress.isLoading,
+          },
+        });
+
+        const percent = Math.min(
+          99,
+          20 + Math.round((progress.loadedPoints / progress.pointBudget) * 70)
+        );
+        this._panelBuilder?.updateLoadingProgress(
+          percent,
+          `Streaming EPT: ${progress.loadedPoints.toLocaleString()} points loaded`
+        );
+
+        this._emit('streamingprogress');
+      });
+
+      eptLoader.on('budgetreached', () => {
+        this._emit('budgetreached');
+      });
+
+      // Store the EPT loader
+      this._eptStreamingLoaders.set(id, eptLoader);
+
+      // Create viewport manager for this dataset
+      const viewportManager = new ViewportManager(
+        this._map!,
+        (viewport) => this._handleViewportChangeForEptStreaming(viewport, id),
+        {
+          debounceMs:
+            options?.viewportDebounceMs ?? this._options.streamingViewportDebounceMs,
+          minDetailZoom: options?.minDetailZoom ?? 10,
+          maxOctreeDepth: options?.maxOctreeDepth ?? 20,
+          spacing,
+        }
+      );
+
+      this._viewportManagers.set(id, viewportManager);
+
+      // Get metadata for WKT
+      const metadata = eptLoader.getMetadata();
+
+      // Create initial point cloud info
+      const info: PointCloudInfo = {
+        id,
+        name: `${name} (EPT)`,
+        pointCount: totalPoints,
+        bounds,
+        hasRGB,
+        hasIntensity: true,
+        hasClassification: true,
+        source: eptUrl,
+        wkt: metadata?.srs?.wkt,
+      };
+
+      // Update state
+      const pointClouds = [...this._state.pointClouds, info];
+      this.setState({
+        loading: false,
+        pointClouds,
+        activePointCloudId: id,
+      });
+
+      // Start viewport-based loading
+      viewportManager.start();
+
+      // Auto-zoom if enabled
+      if (this._options.autoZoom) {
+        this._map?.fitBounds(
+          [
+            [bounds.minX, bounds.minY],
+            [bounds.maxX, bounds.maxY],
+          ],
+          {
+            padding: 50,
+            duration: 1000,
+          }
+        );
+
+        setTimeout(() => {
+          viewportManager.forceUpdate();
+        }, 1100);
+      }
+
+      this._emitWithData('load', { pointCloud: info });
+
+      return info;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+
+      // Clean up on error
+      const eptLoader = this._eptStreamingLoaders.get(id);
+      if (eptLoader) {
+        eptLoader.destroy();
+        this._eptStreamingLoaders.delete(id);
+      }
+      const viewportManager = this._viewportManagers.get(id);
+      if (viewportManager) {
+        viewportManager.destroy();
+        this._viewportManagers.delete(id);
+      }
+
+      const hasActiveStreaming = this._streamingLoaders.size > 0 || this._eptStreamingLoaders.size > 0;
+
+      this.setState({
+        loading: false,
+        streamingActive: hasActiveStreaming,
+        error: `Failed to load EPT: ${error.message}`,
+      });
+      this._emitWithData('loaderror', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Handles viewport changes for EPT streaming mode.
+   *
+   * @param viewport - Current viewport information
+   * @param datasetId - ID of the EPT dataset
+   */
+  private async _handleViewportChangeForEptStreaming(
+    viewport: ViewportInfo,
+    datasetId: string
+  ): Promise<void> {
+    const eptLoader = this._eptStreamingLoaders.get(datasetId);
+    if (!eptLoader) return;
+
+    try {
+      const nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+
+      for (const node of nodesToLoad) {
+        eptLoader.queueNode(node);
+      }
+
+      await eptLoader.loadQueuedNodes();
+    } catch (err) {
+      console.warn('Failed to load EPT nodes for viewport:', err);
+    }
+  }
+
+  /**
    * Downloads a file from URL and loads it fully.
    * Used as fallback when streaming fails due to CORS.
    */
@@ -987,10 +1217,18 @@ export class LidarControl implements IControl {
         this._viewportManagers.delete(id);
       }
 
+      // Check COPC streaming loader
       const streamingLoader = this._streamingLoaders.get(id);
       if (streamingLoader) {
         streamingLoader.destroy();
         this._streamingLoaders.delete(id);
+      }
+
+      // Check EPT streaming loader
+      const eptLoader = this._eptStreamingLoaders.get(id);
+      if (eptLoader) {
+        eptLoader.destroy();
+        this._eptStreamingLoaders.delete(id);
       }
 
       // Remove point cloud from manager
@@ -998,7 +1236,7 @@ export class LidarControl implements IControl {
 
       // Remove from state
       const pointClouds = this._state.pointClouds.filter((pc) => pc.id !== id);
-      const hasActiveStreaming = this._streamingLoaders.size > 0;
+      const hasActiveStreaming = this._streamingLoaders.size > 0 || this._eptStreamingLoaders.size > 0;
 
       // Reset classification state when removing datasets
       this.setState({
@@ -1016,8 +1254,11 @@ export class LidarControl implements IControl {
       this._emit('streamingstop');
       this._emitWithData('unload', { pointCloud: { id } });
     } else {
-      // Stop all streaming datasets
-      const streamingIds = Array.from(this._streamingLoaders.keys());
+      // Stop all streaming datasets (COPC and EPT)
+      const streamingIds = [
+        ...Array.from(this._streamingLoaders.keys()),
+        ...Array.from(this._eptStreamingLoaders.keys()),
+      ];
 
       // Destroy all viewport managers
       for (const viewportManager of this._viewportManagers.values()) {
@@ -1025,11 +1266,17 @@ export class LidarControl implements IControl {
       }
       this._viewportManagers.clear();
 
-      // Destroy all streaming loaders
+      // Destroy all COPC streaming loaders
       for (const streamingLoader of this._streamingLoaders.values()) {
         streamingLoader.destroy();
       }
       this._streamingLoaders.clear();
+
+      // Destroy all EPT streaming loaders
+      for (const eptLoader of this._eptStreamingLoaders.values()) {
+        eptLoader.destroy();
+      }
+      this._eptStreamingLoaders.clear();
 
       // Remove all streaming point clouds from manager
       for (const streamingId of streamingIds) {
@@ -1072,9 +1319,9 @@ export class LidarControl implements IControl {
    */
   isStreaming(id?: string): boolean {
     if (id) {
-      return this._streamingLoaders.has(id);
+      return this._streamingLoaders.has(id) || this._eptStreamingLoaders.has(id);
     }
-    return this._streamingLoaders.size > 0;
+    return this._streamingLoaders.size > 0 || this._eptStreamingLoaders.size > 0;
   }
 
   /**
