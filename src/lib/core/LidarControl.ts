@@ -1541,16 +1541,32 @@ export class LidarControl implements IControl {
    */
   flyToPointCloud(id?: string): void {
     const targetId = id || this._state.activePointCloudId || this._state.pointClouds[0]?.id;
-    if (!targetId) return;
+    if (!targetId || !this._map) return;
 
-    const bounds = this._pointCloudManager?.getPointCloudBounds(targetId);
-    if (!bounds || !this._map) return;
+    // Try to get bounds from point cloud manager first (for loaded data)
+    let bounds = this._pointCloudManager?.getPointCloudBounds(targetId);
 
-    // Bounds are already in WGS84 (transformed during loading if needed)
+    // Fall back to bounds from PointCloudInfo (for EPT streaming before data loads)
+    if (!bounds) {
+      const pcInfo = this._state.pointClouds.find(pc => pc.id === targetId);
+      bounds = pcInfo?.bounds;
+    }
+
+    if (!bounds) {
+      console.warn('Cannot fly to point cloud: no bounds available');
+      return;
+    }
+
     // Validate coordinates are in valid lat/lng range
     if (Math.abs(bounds.minY) > 90 || Math.abs(bounds.maxY) > 90 ||
         Math.abs(bounds.minX) > 180 || Math.abs(bounds.maxX) > 180) {
-      console.error('Cannot fly to point cloud: coordinates are not in WGS84 range');
+      console.error('Cannot fly to point cloud: coordinates are not in WGS84 range', bounds);
+      return;
+    }
+
+    // Check for NaN or invalid values
+    if (isNaN(bounds.minX) || isNaN(bounds.minY) || isNaN(bounds.maxX) || isNaN(bounds.maxY)) {
+      console.error('Cannot fly to point cloud: bounds contain NaN values', bounds);
       return;
     }
 

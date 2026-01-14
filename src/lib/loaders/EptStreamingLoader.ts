@@ -282,14 +282,27 @@ export class EptStreamingLoader {
       const [minLng, minLat] = this._transformer([minX, minY]);
       const [maxLng, maxLat] = this._transformer([maxX, maxY]);
 
-      this._bounds = {
-        minX: Math.min(minLng, maxLng),
-        minY: Math.min(minLat, maxLat),
-        minZ: minZ * this._verticalUnitFactor,
-        maxX: Math.max(minLng, maxLng),
-        maxY: Math.max(minLat, maxLat),
-        maxZ: maxZ * this._verticalUnitFactor,
-      };
+      // Validate transformed coordinates
+      if (isNaN(minLng) || isNaN(minLat) || isNaN(maxLng) || isNaN(maxLat) ||
+          !isFinite(minLng) || !isFinite(minLat) || !isFinite(maxLng) || !isFinite(maxLat)) {
+        console.error('EPT coordinate transformation produced invalid bounds:', {
+          input: { minX, minY, maxX, maxY },
+          output: { minLng, minLat, maxLng, maxLat }
+        });
+        // Fall back to source coordinates
+        this._bounds = { minX, minY, minZ, maxX, maxY, maxZ };
+        this._needsTransform = false;
+        this._transformer = null;
+      } else {
+        this._bounds = {
+          minX: Math.min(minLng, maxLng),
+          minY: Math.min(minLat, maxLat),
+          minZ: minZ * this._verticalUnitFactor,
+          maxX: Math.max(minLng, maxLng),
+          maxY: Math.max(minLat, maxLat),
+          maxZ: maxZ * this._verticalUnitFactor,
+        };
+      }
     } else {
       this._bounds = { minX, minY, minZ, maxX, maxY, maxZ };
     }
@@ -586,7 +599,8 @@ export class EptStreamingLoader {
   }
 
   /**
-   * Ensures hierarchy is loaded for nodes we need.
+   * Ensures root hierarchy is loaded.
+   * Subtree hierarchies are loaded on-demand in selectNodesForViewport.
    */
   private async _ensureHierarchyLoaded(): Promise<void> {
     // Load root hierarchy first
@@ -594,13 +608,7 @@ export class EptStreamingLoader {
       await this._loadHierarchy('0-0-0-0');
       this._rootHierarchyLoaded = true;
     }
-
-    // Load any subtree hierarchies that might be needed
-    for (const subtreeRoot of this._subtreeRoots) {
-      if (!this._hierarchyCache.has(subtreeRoot)) {
-        await this._loadHierarchy(subtreeRoot);
-      }
-    }
+    // Note: Subtree hierarchies are loaded on-demand when they intersect the viewport
   }
 
   /**
