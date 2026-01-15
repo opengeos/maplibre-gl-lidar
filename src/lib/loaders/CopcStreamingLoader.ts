@@ -2,6 +2,10 @@ import { Copc, Hierarchy, Getter } from 'copc';
 import type { Copc as CopcType } from 'copc';
 import { createLazPerf, type LazPerf } from 'laz-perf';
 import proj4 from 'proj4';
+
+// Register common projected coordinate systems that might not have WKT in files
+// EPSG:2180 - ETRS89 / Poland CS92 (commonly used in Poland)
+proj4.defs('EPSG:2180', '+proj=tmerc +lat_0=0 +lon_0=19 +k=0.9993 +x_0=500000 +y_0=-5300000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs');
 import type {
   NodeKey,
   CachedNode,
@@ -164,6 +168,47 @@ function getVerticalUnitConversionFactor(wkt: string): number {
 }
 
 /**
+ * Clamps latitude and longitude values to valid WGS84 ranges.
+ * Latitude is clamped to [-90, 90] and longitude to [-180, 180].
+ * Logs a warning if clamping occurs.
+ *
+ * @param lng - Longitude value
+ * @param lat - Latitude value
+ * @param context - Context string for logging (e.g., "header bounds", "node bounds")
+ * @returns Clamped [lng, lat] tuple
+ */
+function clampLatLng(lng: number, lat: number, context: string = ''): [number, number] {
+  let clampedLng = lng;
+  let clampedLat = lat;
+  let wasClamped = false;
+
+  if (lat > 90) {
+    clampedLat = 90;
+    wasClamped = true;
+  } else if (lat < -90) {
+    clampedLat = -90;
+    wasClamped = true;
+  }
+
+  if (lng > 180) {
+    clampedLng = 180;
+    wasClamped = true;
+  } else if (lng < -180) {
+    clampedLng = -180;
+    wasClamped = true;
+  }
+
+  if (wasClamped) {
+    console.warn(
+      `COPC: Clamped transformed coordinates to valid WGS84 range${context ? ` (${context})` : ''}:`,
+      `[${lng.toFixed(6)}, ${lat.toFixed(6)}] -> [${clampedLng.toFixed(6)}, ${clampedLat.toFixed(6)}]`
+    );
+  }
+
+  return [clampedLng, clampedLat];
+}
+
+/**
  * Default options for streaming loader
  */
 const DEFAULT_OPTIONS: Required<StreamingLoaderOptions> = {
@@ -312,12 +357,43 @@ export class CopcStreamingLoader {
       } catch (e) {
         console.warn('Failed to setup coordinate transformation:', e);
       }
+    } else {
+      // No WKT - try to detect coordinate system based on coordinate ranges
+      const minX = header.min[0];
+      const minY = header.min[1];
+      const maxX = header.max[0];
+      const maxY = header.max[1];
+
+      // Detect if coordinates are likely in a projected system
+      let detectedEPSG: string | null = null;
+
+      // Polish coordinate systems (EPSG:2176-2180)
+      // EPSG:2180 (Poland CS92): X: ~170,000-860,000, Y: ~140,000-780,000
+      if (minX >= 100000 && maxX <= 900000 && minY >= 100000 && maxY <= 800000) {
+        detectedEPSG = 'EPSG:2180';
+      }
+
+      // Try to setup transformation with detected EPSG
+      if (detectedEPSG) {
+        try {
+          const projConverter = proj4(detectedEPSG, 'EPSG:4326');
+          this._transformer = (coord: [number, number]) =>
+            projConverter.forward(coord) as [number, number];
+          this._needsTransform = true;
+        } catch (e) {
+          console.warn(`Failed to setup coordinate transformation from ${detectedEPSG}:`, e);
+        }
+      }
     }
 
     // Calculate bounds
     if (this._needsTransform && this._transformer) {
-      const [minLng, minLat] = this._transformer([header.min[0], header.min[1]]);
-      const [maxLng, maxLat] = this._transformer([header.max[0], header.max[1]]);
+      const [rawMinLng, rawMinLat] = this._transformer([header.min[0], header.min[1]]);
+      const [rawMaxLng, rawMaxLat] = this._transformer([header.max[0], header.max[1]]);
+
+      // Clamp transformed coordinates to valid WGS84 range
+      const [minLng, minLat] = clampLatLng(rawMinLng, rawMinLat, 'header bounds min');
+      const [maxLng, maxLat] = clampLatLng(rawMaxLng, rawMaxLat, 'header bounds max');
 
       this._bounds = {
         minX: Math.min(minLng, maxLng),
@@ -430,8 +506,13 @@ export class CopcStreamingLoader {
     // Transform to WGS84 for viewport intersection
     let boundsWgs84 = bounds;
     if (this._needsTransform && this._transformer) {
-      const [sw_lng, sw_lat] = this._transformer([minX, minY]);
-      const [ne_lng, ne_lat] = this._transformer([minX + nodeSize, minY + nodeSize]);
+      const [rawSwLng, rawSwLat] = this._transformer([minX, minY]);
+      const [rawNeLng, rawNeLat] = this._transformer([minX + nodeSize, minY + nodeSize]);
+
+      // Clamp transformed coordinates to valid WGS84 range
+      const [sw_lng, sw_lat] = clampLatLng(rawSwLng, rawSwLat, 'node bounds SW');
+      const [ne_lng, ne_lat] = clampLatLng(rawNeLng, rawNeLat, 'node bounds NE');
+
       boundsWgs84 = {
         minX: Math.min(sw_lng, ne_lng),
         minY: Math.min(sw_lat, ne_lat),
@@ -758,7 +839,9 @@ export class CopcStreamingLoader {
 
       // Transform coordinates to WGS84 if needed
       if (this._needsTransform && this._transformer) {
-        const [lng, lat] = this._transformer([x, y]);
+        const [rawLng, rawLat] = this._transformer([x, y]);
+        // Clamp to valid WGS84 range (silently - no logging for individual points to avoid console spam)
+        const [lng, lat] = clampLatLng(rawLng, rawLat, '');
         this._positions![pointIndex * 3] = lng - this._coordinateOrigin[0];
         this._positions![pointIndex * 3 + 1] = lat - this._coordinateOrigin[1];
         this._positions![pointIndex * 3 + 2] = z * this._verticalUnitFactor;

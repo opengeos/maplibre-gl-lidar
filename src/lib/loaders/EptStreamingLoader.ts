@@ -77,6 +77,46 @@ function createAttributeArray(type: AttributeConfig['arrayType'], length: number
   }
 }
 
+/**
+ * Clamps latitude and longitude values to valid WGS84 ranges.
+ * Latitude is clamped to [-90, 90] and longitude to [-180, 180].
+ * Logs a warning if clamping occurs.
+ *
+ * @param lng - Longitude value
+ * @param lat - Latitude value
+ * @param context - Context string for logging (e.g., "header bounds", "node bounds")
+ * @returns Clamped [lng, lat] tuple
+ */
+function clampLatLng(lng: number, lat: number, context: string = ''): [number, number] {
+  let clampedLng = lng;
+  let clampedLat = lat;
+  let wasClamped = false;
+
+  if (lat > 90) {
+    clampedLat = 90;
+    wasClamped = true;
+  } else if (lat < -90) {
+    clampedLat = -90;
+    wasClamped = true;
+  }
+
+  if (lng > 180) {
+    clampedLng = 180;
+    wasClamped = true;
+  } else if (lng < -180) {
+    clampedLng = -180;
+    wasClamped = true;
+  }
+
+  if (wasClamped && context) {
+    console.warn(
+      `EPT: Clamped transformed coordinates to valid WGS84 range${context ? ` (${context})` : ''}:`,
+      `[${lng.toFixed(6)}, ${lat.toFixed(6)}] -> [${clampedLng.toFixed(6)}, ${clampedLat.toFixed(6)}]`
+    );
+  }
+
+  return [clampedLng, clampedLat];
+}
 
 /**
  * Extracts the PROJCS section from a WKT string (handles COMPD_CS)
@@ -279,21 +319,25 @@ export class EptStreamingLoader {
     const [minX, minY, minZ, maxX, maxY, maxZ] = this._metadata.boundsConforming;
 
     if (this._needsTransform && this._transformer) {
-      const [minLng, minLat] = this._transformer([minX, minY]);
-      const [maxLng, maxLat] = this._transformer([maxX, maxY]);
+      const [rawMinLng, rawMinLat] = this._transformer([minX, minY]);
+      const [rawMaxLng, rawMaxLat] = this._transformer([maxX, maxY]);
 
       // Validate transformed coordinates
-      if (isNaN(minLng) || isNaN(minLat) || isNaN(maxLng) || isNaN(maxLat) ||
-          !isFinite(minLng) || !isFinite(minLat) || !isFinite(maxLng) || !isFinite(maxLat)) {
+      if (isNaN(rawMinLng) || isNaN(rawMinLat) || isNaN(rawMaxLng) || isNaN(rawMaxLat) ||
+          !isFinite(rawMinLng) || !isFinite(rawMinLat) || !isFinite(rawMaxLng) || !isFinite(rawMaxLat)) {
         console.error('EPT coordinate transformation produced invalid bounds:', {
           input: { minX, minY, maxX, maxY },
-          output: { minLng, minLat, maxLng, maxLat }
+          output: { rawMinLng, rawMinLat, rawMaxLng, rawMaxLat }
         });
         // Fall back to source coordinates
         this._bounds = { minX, minY, minZ, maxX, maxY, maxZ };
         this._needsTransform = false;
         this._transformer = null;
       } else {
+        // Clamp transformed coordinates to valid WGS84 range
+        const [minLng, minLat] = clampLatLng(rawMinLng, rawMinLat, 'header bounds min');
+        const [maxLng, maxLat] = clampLatLng(rawMaxLng, rawMaxLat, 'header bounds max');
+
         this._bounds = {
           minX: Math.min(minLng, maxLng),
           minY: Math.min(minLat, maxLat),
@@ -477,8 +521,13 @@ export class EptStreamingLoader {
     // Transform to WGS84 for viewport intersection
     let boundsWgs84 = bounds;
     if (this._needsTransform && this._transformer) {
-      const [sw_lng, sw_lat] = this._transformer([minX, minY]);
-      const [ne_lng, ne_lat] = this._transformer([minX + nodeSize, minY + nodeSize]);
+      const [rawSwLng, rawSwLat] = this._transformer([minX, minY]);
+      const [rawNeLng, rawNeLat] = this._transformer([minX + nodeSize, minY + nodeSize]);
+
+      // Clamp transformed coordinates to valid WGS84 range
+      const [sw_lng, sw_lat] = clampLatLng(rawSwLng, rawSwLat, 'node bounds SW');
+      const [ne_lng, ne_lat] = clampLatLng(rawNeLng, rawNeLat, 'node bounds NE');
+
       boundsWgs84 = {
         minX: Math.min(sw_lng, ne_lng),
         minY: Math.min(sw_lat, ne_lat),
@@ -871,7 +920,9 @@ export class EptStreamingLoader {
 
       // Transform coordinates to WGS84 if needed
       if (this._needsTransform && this._transformer) {
-        const [lng, lat] = this._transformer([x, y]);
+        const [rawLng, rawLat] = this._transformer([x, y]);
+        // Clamp to valid WGS84 range (silently - no logging for individual points to avoid console spam)
+        const [lng, lat] = clampLatLng(rawLng, rawLat, '');
         this._positions![pointIndex * 3] = lng - this._coordinateOrigin[0];
         this._positions![pointIndex * 3 + 1] = lat - this._coordinateOrigin[1];
         this._positions![pointIndex * 3 + 2] = z * this._verticalUnitFactor;
@@ -975,7 +1026,9 @@ export class EptStreamingLoader {
 
       // Transform coordinates to WGS84 if needed
       if (this._needsTransform && this._transformer) {
-        const [lng, lat] = this._transformer([x, y]);
+        const [rawLng, rawLat] = this._transformer([x, y]);
+        // Clamp to valid WGS84 range (silently - no logging for individual points to avoid console spam)
+        const [lng, lat] = clampLatLng(rawLng, rawLat, '');
         this._positions![pointIndex * 3] = lng - this._coordinateOrigin[0];
         this._positions![pointIndex * 3 + 1] = lat - this._coordinateOrigin[1];
         this._positions![pointIndex * 3 + 2] = z * this._verticalUnitFactor;

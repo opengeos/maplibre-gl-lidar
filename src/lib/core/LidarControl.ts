@@ -731,11 +731,17 @@ export class LidarControl implements IControl {
 
       // Auto-zoom if enabled
       if (this._options.autoZoom) {
+        // Validate and clamp bounds to valid WGS84 range before calling fitBounds
+        const clampedMinY = Math.max(-90, Math.min(90, bounds.minY));
+        const clampedMaxY = Math.max(-90, Math.min(90, bounds.maxY));
+        const clampedMinX = Math.max(-180, Math.min(180, bounds.minX));
+        const clampedMaxX = Math.max(-180, Math.min(180, bounds.maxX));
+
         // First fly to bounds
         this._map?.fitBounds(
           [
-            [bounds.minX, bounds.minY],
-            [bounds.maxX, bounds.maxY],
+            [clampedMinX, clampedMinY],
+            [clampedMaxX, clampedMaxY],
           ],
           {
             padding: 50,
@@ -950,10 +956,16 @@ export class LidarControl implements IControl {
 
       // Auto-zoom if enabled
       if (this._options.autoZoom) {
+        // Validate and clamp bounds to valid WGS84 range before calling fitBounds
+        const clampedMinY = Math.max(-90, Math.min(90, bounds.minY));
+        const clampedMaxY = Math.max(-90, Math.min(90, bounds.maxY));
+        const clampedMinX = Math.max(-180, Math.min(180, bounds.minX));
+        const clampedMaxX = Math.max(-180, Math.min(180, bounds.maxX));
+
         this._map?.fitBounds(
           [
-            [bounds.minX, bounds.minY],
-            [bounds.maxX, bounds.maxY],
+            [clampedMinX, clampedMinY],
+            [clampedMaxX, clampedMaxY],
           ],
           {
             padding: 50,
