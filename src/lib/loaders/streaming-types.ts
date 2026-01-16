@@ -44,6 +44,13 @@ export interface StreamingLoaderOptions {
    * @default 20
    */
   maxOctreeDepth?: number;
+
+  /**
+   * Maximum subtree hierarchies to load per viewport change (EPT only)
+   * Increase this for large datasets with many subtrees
+   * @default 60
+   */
+  maxSubtreesPerViewport?: number;
 }
 
 /**

@@ -179,10 +179,11 @@ function getVerticalUnitConversionFactor(wkt: string): number {
  */
 const DEFAULT_OPTIONS: Required<StreamingLoaderOptions> = {
   pointBudget: 5_000_000,
-  maxConcurrentRequests: 4,
-  viewportDebounceMs: 150,
+  maxConcurrentRequests: 8,
+  viewportDebounceMs: 100,
   minDetailZoom: 10,
   maxOctreeDepth: 20,
+  maxSubtreesPerViewport: 60,
 };
 
 /**
@@ -201,6 +202,8 @@ export class EptStreamingLoader {
 
   // Hierarchy cache
   private _hierarchyCache: Map<string, EptHierarchy> = new Map();
+  private _hierarchyLoading: Set<string> = new Set();
+  private _hierarchyFailures: Map<string, number> = new Map();
   private _subtreeRoots: Set<string> = new Set();
   private _rootHierarchyLoaded: boolean = false;
 
@@ -246,6 +249,7 @@ export class EptStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  private _isResetting: boolean = false;
 
   /**
    * Creates a new EptStreamingLoader instance.
@@ -599,28 +603,32 @@ export class EptStreamingLoader {
    * @param key - Hierarchy key (e.g., "0-0-0-0")
    */
   private async _loadHierarchy(key: string): Promise<void> {
-    if (this._hierarchyCache.has(key)) return;
+    if (this._hierarchyCache.has(key) || this._hierarchyLoading.has(key)) return;
 
     const url = `${this._baseUrl}/ept-hierarchy/${key}.json`;
+    this._hierarchyLoading.add(key);
     try {
       const response = await fetch(url);
       if (!response.ok) {
+        this._hierarchyFailures.set(key, Date.now());
         console.warn(`Failed to load hierarchy ${key}: ${response.status}`);
         return;
       }
 
       const hierarchy: EptHierarchy = await response.json();
       this._hierarchyCache.set(key, hierarchy);
+      this._hierarchyFailures.delete(key);
 
       // Process hierarchy entries
       for (const [nodeKey, value] of Object.entries(hierarchy)) {
         const keyArray = this._parseNodeKey(nodeKey);
         const { bounds, boundsWgs84 } = this._calculateNodeBounds(keyArray);
+        const existingNode = this._nodeCache.get(nodeKey);
 
         if (value === -1) {
           // Subtree root - create a placeholder entry and mark for later loading
           this._subtreeRoots.add(nodeKey);
-          if (!this._nodeCache.has(nodeKey)) {
+          if (!existingNode) {
             this._nodeCache.set(nodeKey, {
               key: nodeKey,
               keyArray,
@@ -630,20 +638,31 @@ export class EptStreamingLoader {
               boundsWgs84,
             });
           }
-        } else if (value > 0 && !this._nodeCache.has(nodeKey)) {
-          // Create node cache entry
-          this._nodeCache.set(nodeKey, {
-            key: nodeKey,
-            keyArray,
-            state: 'pending',
-            pointCount: value,
-            bounds,
-            boundsWgs84,
-          });
+        } else if (value > 0) {
+          if (existingNode?.state === 'subtree') {
+            // Subtree root entries appear again in their own hierarchy file
+            existingNode.state = 'pending';
+            existingNode.pointCount = value;
+            existingNode.bounds = bounds;
+            existingNode.boundsWgs84 = boundsWgs84;
+          } else if (!existingNode) {
+            // Create node cache entry
+            this._nodeCache.set(nodeKey, {
+              key: nodeKey,
+              keyArray,
+              state: 'pending',
+              pointCount: value,
+              bounds,
+              boundsWgs84,
+            });
+          }
         }
       }
     } catch (error) {
+      this._hierarchyFailures.set(key, Date.now());
       console.warn(`Error loading hierarchy ${key}:`, error);
+    } finally {
+      this._hierarchyLoading.delete(key);
     }
   }
 
@@ -676,32 +695,54 @@ export class EptStreamingLoader {
 
     const targetDepth = viewport.targetDepth;
 
-    // First pass: find subtree nodes that intersect viewport and load their hierarchies
-    // This handles large datasets where data is nested in subtrees
-    const subtreesToLoad: string[] = [];
-    for (const [, node] of this._nodeCache) {
-      const depth = node.keyArray[0];
+    // Load subtree hierarchies in multiple passes to discover nested subtrees
+    // Each pass may reveal new subtrees that need to be loaded
+    const maxSubtreesToLoad = Math.max(1, this._options.maxSubtreesPerViewport);
+    const loadedSubtrees = new Set<string>();
+    const maxPasses = 3;
+    const now = Date.now();
+    const hierarchyRetryCooldownMs = 5000;
 
-      // Only check subtrees within our target depth range
-      if (depth > targetDepth + 2) continue;
+    for (let pass = 0; pass < maxPasses; pass++) {
+      // Find subtrees that intersect viewport and haven't been loaded yet
+      const subtreeCandidates: Array<{ key: string; priority: number }> = [];
+      for (const [, node] of this._nodeCache) {
+        const depth = node.keyArray[0];
 
-      // Check if this subtree intersects viewport
-      if (node.state === 'subtree' && this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
-        if (!this._hierarchyCache.has(node.key)) {
-          subtreesToLoad.push(node.key);
+        // Only check subtrees within our target depth range
+        if (depth > targetDepth + 3) continue;
+
+        // Check if this subtree intersects viewport and hasn't been processed
+        const lastFailure = this._hierarchyFailures.get(node.key);
+        if (node.state === 'subtree' &&
+            !this._hierarchyCache.has(node.key) &&
+            !this._hierarchyLoading.has(node.key) &&
+            !loadedSubtrees.has(node.key) &&
+            (!lastFailure || (now - lastFailure) >= hierarchyRetryCooldownMs) &&
+            this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+          const priority = this._calculateNodePriority(node.boundsWgs84, viewport);
+          subtreeCandidates.push({ key: node.key, priority });
         }
       }
-    }
 
-    // Load intersecting subtree hierarchies (limit to prevent too many requests)
-    const maxSubtreesToLoad = 10;
-    for (const subtreeKey of subtreesToLoad.slice(0, maxSubtreesToLoad)) {
-      await this._loadHierarchy(subtreeKey);
+      // No more subtrees to load - done
+      if (subtreeCandidates.length === 0) break;
+
+      // Sort by priority (closest to center first) and limit per pass
+      subtreeCandidates.sort((a, b) => a.priority - b.priority);
+      const perPassLimit = Math.ceil(maxSubtreesToLoad / maxPasses);
+      const subtreesToProcess = subtreeCandidates.slice(0, perPassLimit).map(s => s.key);
+
+      // Fire requests in parallel
+      await Promise.all(subtreesToProcess.map(subtreeKey => this._loadHierarchy(subtreeKey)));
+      subtreesToProcess.forEach(key => loadedSubtrees.add(key));
+
+      // If we've loaded enough subtrees total, stop
+      if (loadedSubtrees.size >= maxSubtreesToLoad) break;
     }
 
     // Second pass: collect loadable nodes
     const nodesToLoad: EptCachedNode[] = [];
-    const now = Date.now();
     const retryCooldownMs = 5000; // Wait 5 seconds before retrying failed nodes
 
     for (const [, node] of this._nodeCache) {
@@ -719,7 +760,8 @@ export class EptStreamingLoader {
       }
 
       // Skip nodes deeper than we need
-      if (depth > targetDepth + 1) continue;
+      // Use +2 to allow loading slightly more detailed nodes for better coverage
+      if (depth > targetDepth + 2) continue;
 
       // Check viewport intersection
       if (!this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
@@ -1143,6 +1185,36 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Checks whether there are subtree hierarchies still pending for the viewport.
+   *
+   * @param viewport - Current viewport information
+   * @returns True if more subtree hierarchies should be loaded
+   */
+  hasPendingSubtrees(viewport: ViewportInfo): boolean {
+    if (!this._isInitialized) return false;
+
+    const targetDepth = viewport.targetDepth;
+    const now = Date.now();
+    const hierarchyRetryCooldownMs = 5000;
+
+    for (const [, node] of this._nodeCache) {
+      const depth = node.keyArray[0];
+      if (depth > targetDepth + 3) continue;
+
+      const lastFailure = this._hierarchyFailures.get(node.key);
+      if (node.state === 'subtree' &&
+          !this._hierarchyCache.has(node.key) &&
+          !this._hierarchyLoading.has(node.key) &&
+          (!lastFailure || (now - lastFailure) >= hierarchyRetryCooldownMs) &&
+          this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Gets the current streaming progress.
    */
   private _getProgressEvent(): StreamingProgressEvent {
@@ -1207,6 +1279,71 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Gets the current point budget.
+   */
+  getPointBudget(): number {
+    return this._options.pointBudget;
+  }
+
+  /**
+   * Checks if any nodes intersecting the viewport have already been loaded.
+   *
+   * @param viewport - Current viewport information
+   * @returns True if viewport has loaded coverage
+   */
+  hasLoadedNodesInViewport(viewport: ViewportInfo, minDepth: number = 0): boolean {
+    for (const [, node] of this._nodeCache) {
+      if (node.state !== 'loaded') continue;
+      if (node.keyArray[0] < minDepth) continue;
+      if (this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Estimates viewport coverage ratio by loaded nodes.
+   * Returns a value from 0 to 1 representing how much of the viewport
+   * is covered by loaded tiles.
+   *
+   * @param viewport - Current viewport information
+   * @param minDepth - Minimum octree depth to consider
+   * @returns Coverage ratio (0-1)
+   */
+  getViewportCoverageRatio(viewport: ViewportInfo, minDepth: number = 0): number {
+    const [west, south, east, north] = viewport.bounds;
+    const viewportArea = (east - west) * (north - south);
+    if (viewportArea <= 0) return 0;
+
+    let coveredArea = 0;
+
+    for (const [, node] of this._nodeCache) {
+      if (node.state !== 'loaded') continue;
+      if (node.keyArray[0] < minDepth) continue;
+
+      // Calculate intersection area with viewport
+      const nodeWest = node.boundsWgs84.minX;
+      const nodeSouth = node.boundsWgs84.minY;
+      const nodeEast = node.boundsWgs84.maxX;
+      const nodeNorth = node.boundsWgs84.maxY;
+
+      const intersectWest = Math.max(west, nodeWest);
+      const intersectEast = Math.min(east, nodeEast);
+      const intersectSouth = Math.max(south, nodeSouth);
+      const intersectNorth = Math.min(north, nodeNorth);
+
+      if (intersectWest < intersectEast && intersectSouth < intersectNorth) {
+        const intersectArea = (intersectEast - intersectWest) * (intersectNorth - intersectSouth);
+        coveredArea += intersectArea;
+      }
+    }
+
+    // Cap at 1.0 (overlapping nodes can cause > 1)
+    return Math.min(1.0, coveredArea / viewportArea);
+  }
+
+  /**
    * Gets the total number of loaded nodes.
    */
   getLoadedNodeCount(): number {
@@ -1218,6 +1355,58 @@ export class EptStreamingLoader {
    */
   isLoading(): boolean {
     return this._activeRequests > 0 || this._loadingQueue.length > 0;
+  }
+
+  /**
+   * Removes queued nodes that are outside the current viewport and re-sorts priorities.
+   *
+   * @param viewport - Current viewport information
+   */
+  pruneQueueForViewport(viewport: ViewportInfo): void {
+    if (this._loadingQueue.length === 0) return;
+
+    this._loadingQueue = this._loadingQueue.filter((node) =>
+      this._boundsIntersectsViewport(node.boundsWgs84, viewport)
+    );
+
+    for (const node of this._loadingQueue) {
+      const distPriority = this._calculateNodePriority(node.boundsWgs84, viewport);
+      const depth = node.keyArray[0];
+      node.priority = distPriority - (depth * 0.0001);
+    }
+
+    this._loadingQueue.sort((a, b) => (a.priority || Infinity) - (b.priority || Infinity));
+  }
+
+  /**
+   * Resets loaded node data to allow loading a new area.
+   * Keeps hierarchy cache intact but clears loaded points and node states.
+   *
+   * @returns True if reset occurred
+   */
+  resetLoadedData(): boolean {
+    if (this._activeRequests > 0 || this._isResetting) return false;
+    this._isResetting = true;
+
+    this._loadingQueue = [];
+    this._totalLoadedPoints = 0;
+    this._totalLoadedNodes = 0;
+
+    for (const [, node] of this._nodeCache) {
+      if (node.state === 'loaded' || node.state === 'loading' || node.state === 'error') {
+        node.state = 'pending';
+        node.bufferStartIndex = undefined;
+        node.error = undefined;
+        node.retryCount = undefined;
+        node.lastFailedAt = undefined;
+      }
+    }
+
+    // Force a render update so old points are cleared.
+    this._scheduleLayerUpdate();
+
+    this._isResetting = false;
+    return true;
   }
 
   /**
@@ -1238,6 +1427,8 @@ export class EptStreamingLoader {
     this._loadingQueue = [];
     this._nodeCache.clear();
     this._hierarchyCache.clear();
+    this._hierarchyLoading.clear();
+    this._hierarchyFailures.clear();
     this._subtreeRoots.clear();
     this._eventHandlers.clear();
 

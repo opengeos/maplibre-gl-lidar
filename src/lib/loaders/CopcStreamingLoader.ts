@@ -213,10 +213,11 @@ function clampLatLng(lng: number, lat: number, context: string = ''): [number, n
  */
 const DEFAULT_OPTIONS: Required<StreamingLoaderOptions> = {
   pointBudget: 5_000_000,
-  maxConcurrentRequests: 4,
-  viewportDebounceMs: 150,
+  maxConcurrentRequests: 8,
+  viewportDebounceMs: 100,
   minDetailZoom: 10,
   maxOctreeDepth: 20,
+  maxSubtreesPerViewport: 60, // Not used by COPC, but required by interface
 };
 
 /**

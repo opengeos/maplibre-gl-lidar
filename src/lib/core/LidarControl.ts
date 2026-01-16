@@ -103,6 +103,8 @@ export class LidarControl implements IControl {
   private _streamingLoaders: Map<string, CopcStreamingLoader> = new Map();
   private _eptStreamingLoaders: Map<string, EptStreamingLoader> = new Map();
   private _viewportManagers: Map<string, ViewportManager> = new Map();
+  private _eptViewportRequestIds: Map<string, number> = new Map();
+  private _eptLastViewport: Map<string, ViewportInfo> = new Map();
 
   /**
    * Creates a new LidarControl instance.
@@ -1016,6 +1018,8 @@ export class LidarControl implements IControl {
         eptLoader.destroy();
         this._eptStreamingLoaders.delete(id);
       }
+      this._eptViewportRequestIds.delete(id);
+      this._eptLastViewport.delete(id);
       const viewportManager = this._viewportManagers.get(id);
       if (viewportManager) {
         viewportManager.destroy();
@@ -1040,21 +1044,122 @@ export class LidarControl implements IControl {
    * @param viewport - Current viewport information
    * @param datasetId - ID of the EPT dataset
    */
+  private _shouldResetEptForViewportChange(
+    previous: ViewportInfo | undefined,
+    current: ViewportInfo
+  ): boolean {
+    if (!previous) return false;
+
+    const [prevWest, prevSouth, prevEast, prevNorth] = previous.bounds;
+    const [curWest, curSouth, curEast, curNorth] = current.bounds;
+
+    const intersects = !(
+      curEast < prevWest ||
+      curWest > prevEast ||
+      curNorth < prevSouth ||
+      curSouth > prevNorth
+    );
+
+    // Reset if viewports don't intersect at all
+    if (!intersects) return true;
+
+    const prevWidth = prevEast - prevWest;
+    const prevHeight = prevNorth - prevSouth;
+    const dx = current.center[0] - previous.center[0];
+    const dy = current.center[1] - previous.center[1];
+    const centerDistance = Math.sqrt(dx * dx + dy * dy);
+
+    // Reset if center moved more than 30% of viewport dimension
+    const threshold = Math.max(prevWidth, prevHeight) * 0.3;
+
+    return centerDistance > threshold;
+  }
+
   private async _handleViewportChangeForEptStreaming(
     viewport: ViewportInfo,
-    datasetId: string
+    datasetId: string,
+    requestId?: number
   ): Promise<void> {
     const eptLoader = this._eptStreamingLoaders.get(datasetId);
     if (!eptLoader) return;
 
     try {
-      const nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+      const currentRequestId = requestId ?? (this._eptViewportRequestIds.get(datasetId) ?? 0) + 1;
+      if (requestId === undefined) {
+        this._eptViewportRequestIds.set(datasetId, currentRequestId);
+      }
+
+      if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      const previousViewport = this._eptLastViewport.get(datasetId);
+      const shouldResetForMove = this._shouldResetEptForViewportChange(previousViewport, viewport);
+      this._eptLastViewport.set(datasetId, viewport);
+
+      eptLoader.pruneQueueForViewport(viewport);
+
+      if (shouldResetForMove) {
+        const resetSucceeded = eptLoader.resetLoadedData();
+        if (!resetSucceeded) {
+          setTimeout(() => {
+            this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+          }, 200);
+          return;
+        }
+      }
+
+      let nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+
+      let resetSucceeded = false;
+      const loadedPoints = eptLoader.getLoadedPointCount();
+      const pointBudget = eptLoader.getPointBudget();
+      const budgetReached = loadedPoints >= pointBudget * 0.8; // 80% threshold
+      const minDepthForCoverage = Math.max(0, viewport.targetDepth - 2);
+
+      // Check coverage ratio - if less than 50% is covered, we need to load more
+      const coverageRatio = eptLoader.getViewportCoverageRatio(viewport, minDepthForCoverage);
+      const needsCoverage = coverageRatio < 0.5;
+
+      const hasPendingSubtrees = eptLoader.hasPendingSubtrees(viewport);
+      const hasPendingWork = nodesToLoad.length > 0 || hasPendingSubtrees;
+
+      // Reset if budget is reached but we need more coverage in current viewport
+      if (budgetReached && needsCoverage && hasPendingWork) {
+        resetSucceeded = eptLoader.resetLoadedData();
+        if (resetSucceeded) {
+          nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+        }
+      }
+
+      // Also check if we have very low coverage but some budget left -
+      // this means we haven't loaded this area's subtrees yet
+      if (!budgetReached && coverageRatio < 0.1 && nodesToLoad.length === 0) {
+        // Force another subtree discovery pass
+        nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+      }
 
       for (const node of nodesToLoad) {
         eptLoader.queueNode(node);
       }
 
       await eptLoader.loadQueuedNodes();
+
+      if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      // Only retry if we need more coverage AND there's pending work
+      // Don't retry if coverage is already good (>= 50%)
+      if (budgetReached && needsCoverage && nodesToLoad.length > 0 && !resetSucceeded) {
+        setTimeout(() => {
+          this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+        }, 200);
+        return;
+      }
+
+      // Continue loading subtrees if there are pending ones
+      if (hasPendingSubtrees) {
+        setTimeout(() => {
+          this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+        }, 100);
+      }
     } catch (err) {
       console.warn('Failed to load EPT nodes for viewport:', err);
     }
@@ -1327,6 +1432,8 @@ export class LidarControl implements IControl {
         eptLoader.destroy();
       }
       this._eptStreamingLoaders.clear();
+      this._eptViewportRequestIds.clear();
+      this._eptLastViewport.clear();
 
       // Remove all streaming point clouds from manager
       for (const streamingId of streamingIds) {
