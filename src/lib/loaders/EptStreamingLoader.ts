@@ -249,6 +249,7 @@ export class EptStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  private _isResetting: boolean = false;
 
   /**
    * Creates a new EptStreamingLoader instance.
@@ -1278,6 +1279,30 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Gets the current point budget.
+   */
+  getPointBudget(): number {
+    return this._options.pointBudget;
+  }
+
+  /**
+   * Checks if any nodes intersecting the viewport have already been loaded.
+   *
+   * @param viewport - Current viewport information
+   * @returns True if viewport has loaded coverage
+   */
+  hasLoadedNodesInViewport(viewport: ViewportInfo, minDepth: number = 0): boolean {
+    for (const [, node] of this._nodeCache) {
+      if (node.state !== 'loaded') continue;
+      if (node.keyArray[0] < minDepth) continue;
+      if (this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Gets the total number of loaded nodes.
    */
   getLoadedNodeCount(): number {
@@ -1289,6 +1314,58 @@ export class EptStreamingLoader {
    */
   isLoading(): boolean {
     return this._activeRequests > 0 || this._loadingQueue.length > 0;
+  }
+
+  /**
+   * Removes queued nodes that are outside the current viewport and re-sorts priorities.
+   *
+   * @param viewport - Current viewport information
+   */
+  pruneQueueForViewport(viewport: ViewportInfo): void {
+    if (this._loadingQueue.length === 0) return;
+
+    this._loadingQueue = this._loadingQueue.filter((node) =>
+      this._boundsIntersectsViewport(node.boundsWgs84, viewport)
+    );
+
+    for (const node of this._loadingQueue) {
+      const distPriority = this._calculateNodePriority(node.boundsWgs84, viewport);
+      const depth = node.keyArray[0];
+      node.priority = distPriority - (depth * 0.0001);
+    }
+
+    this._loadingQueue.sort((a, b) => (a.priority || Infinity) - (b.priority || Infinity));
+  }
+
+  /**
+   * Resets loaded node data to allow loading a new area.
+   * Keeps hierarchy cache intact but clears loaded points and node states.
+   *
+   * @returns True if reset occurred
+   */
+  resetLoadedData(): boolean {
+    if (this._activeRequests > 0 || this._isResetting) return false;
+    this._isResetting = true;
+
+    this._loadingQueue = [];
+    this._totalLoadedPoints = 0;
+    this._totalLoadedNodes = 0;
+
+    for (const [, node] of this._nodeCache) {
+      if (node.state === 'loaded' || node.state === 'loading' || node.state === 'error') {
+        node.state = 'pending';
+        node.bufferStartIndex = undefined;
+        node.error = undefined;
+        node.retryCount = undefined;
+        node.lastFailedAt = undefined;
+      }
+    }
+
+    // Force a render update so old points are cleared.
+    this._scheduleLayerUpdate();
+
+    this._isResetting = false;
+    return true;
   }
 
   /**

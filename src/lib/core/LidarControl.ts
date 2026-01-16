@@ -104,6 +104,7 @@ export class LidarControl implements IControl {
   private _eptStreamingLoaders: Map<string, EptStreamingLoader> = new Map();
   private _viewportManagers: Map<string, ViewportManager> = new Map();
   private _eptViewportRequestIds: Map<string, number> = new Map();
+  private _eptLastViewport: Map<string, ViewportInfo> = new Map();
 
   /**
    * Creates a new LidarControl instance.
@@ -1017,6 +1018,8 @@ export class LidarControl implements IControl {
         eptLoader.destroy();
         this._eptStreamingLoaders.delete(id);
       }
+      this._eptViewportRequestIds.delete(id);
+      this._eptLastViewport.delete(id);
       const viewportManager = this._viewportManagers.get(id);
       if (viewportManager) {
         viewportManager.destroy();
@@ -1041,6 +1044,34 @@ export class LidarControl implements IControl {
    * @param viewport - Current viewport information
    * @param datasetId - ID of the EPT dataset
    */
+  private _shouldResetEptForViewportChange(
+    previous: ViewportInfo | undefined,
+    current: ViewportInfo
+  ): boolean {
+    if (!previous) return false;
+
+    const [prevWest, prevSouth, prevEast, prevNorth] = previous.bounds;
+    const [curWest, curSouth, curEast, curNorth] = current.bounds;
+
+    const intersects = !(
+      curEast < prevWest ||
+      curWest > prevEast ||
+      curNorth < prevSouth ||
+      curSouth > prevNorth
+    );
+
+    if (!intersects) return true;
+
+    const prevWidth = prevEast - prevWest;
+    const prevHeight = prevNorth - prevSouth;
+    const dx = current.center[0] - previous.center[0];
+    const dy = current.center[1] - previous.center[1];
+    const centerDistance = Math.sqrt(dx * dx + dy * dy);
+    const threshold = Math.max(prevWidth, prevHeight) * 0.6;
+
+    return centerDistance > threshold;
+  }
+
   private async _handleViewportChangeForEptStreaming(
     viewport: ViewportInfo,
     datasetId: string,
@@ -1057,7 +1088,37 @@ export class LidarControl implements IControl {
 
       if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
 
-      const nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+      const previousViewport = this._eptLastViewport.get(datasetId);
+      const shouldResetForMove = this._shouldResetEptForViewportChange(previousViewport, viewport);
+      this._eptLastViewport.set(datasetId, viewport);
+
+      eptLoader.pruneQueueForViewport(viewport);
+
+      if (shouldResetForMove) {
+        const resetSucceeded = eptLoader.resetLoadedData();
+        if (!resetSucceeded) {
+          setTimeout(() => {
+            this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+          }, 200);
+          return;
+        }
+      }
+
+      let nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+
+      let resetSucceeded = false;
+      const budgetReached =
+        eptLoader.getLoadedPointCount() >= eptLoader.getPointBudget();
+      const minDepthForCoverage = Math.max(0, viewport.targetDepth - 2);
+      const needsCoverage = !eptLoader.hasLoadedNodesInViewport(viewport, minDepthForCoverage);
+      const canLoadNewArea =
+        nodesToLoad.length > 0 || eptLoader.hasPendingSubtrees(viewport);
+      if (budgetReached && needsCoverage && canLoadNewArea) {
+        resetSucceeded = eptLoader.resetLoadedData();
+        if (resetSucceeded) {
+          nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
+        }
+      }
 
       for (const node of nodesToLoad) {
         eptLoader.queueNode(node);
@@ -1066,6 +1127,13 @@ export class LidarControl implements IControl {
       await eptLoader.loadQueuedNodes();
 
       if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      if (budgetReached && nodesToLoad.length > 0 && !resetSucceeded) {
+        setTimeout(() => {
+          this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+        }, 200);
+        return;
+      }
 
       if (eptLoader.hasPendingSubtrees(viewport)) {
         setTimeout(() => {
@@ -1344,6 +1412,8 @@ export class LidarControl implements IControl {
         eptLoader.destroy();
       }
       this._eptStreamingLoaders.clear();
+      this._eptViewportRequestIds.clear();
+      this._eptLastViewport.clear();
 
       // Remove all streaming point clouds from manager
       for (const streamingId of streamingIds) {
