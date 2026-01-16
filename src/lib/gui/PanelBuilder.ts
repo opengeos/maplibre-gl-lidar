@@ -175,6 +175,10 @@ export class PanelBuilder {
       // Also update data bounds based on current color scheme
       const bounds = this._getDataBoundsForCurrentScheme();
       this._colorRangeControl.setDataBounds(bounds);
+      // Update computed bounds for mode switching
+      if (state.computedColorBounds) {
+        this._colorRangeControl.setComputedBounds(state.computedColorBounds);
+      }
     }
 
     // Update percentile checkbox (legacy)
@@ -721,6 +725,7 @@ export class PanelBuilder {
         percentileHigh: 98,
       },
       dataBounds,
+      computedBounds: this._state.computedColorBounds,
       onChange: (config) => {
         this._callbacks.onColorRangeChange(config);
       },

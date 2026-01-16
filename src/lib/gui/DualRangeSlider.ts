@@ -20,6 +20,7 @@ export class DualRangeSlider {
   private _sliderLow?: HTMLInputElement;
   private _sliderHigh?: HTMLInputElement;
   private _valueDisplay?: HTMLElement;
+  private _rangeHighlight?: HTMLElement;
 
   constructor(options: DualRangeSliderOptions) {
     this._options = options;
@@ -80,6 +81,7 @@ export class DualRangeSlider {
       background: #159895;
       border-radius: 2px;
     `;
+    this._rangeHighlight = range;
     sliderContainer.appendChild(range);
 
     // Low slider
@@ -218,6 +220,7 @@ export class DualRangeSlider {
     if (this._valueDisplay) {
       this._valueDisplay.textContent = this._formatRange(low, high);
     }
+    this._updateRangeHighlight();
   }
 
   /**
@@ -234,6 +237,36 @@ export class DualRangeSlider {
       this._sliderHigh.min = String(min);
       this._sliderHigh.max = String(max);
     }
+    this._updateRangeHighlight();
+  }
+
+  /**
+   * Updates the step value of the slider.
+   */
+  setStep(step: number): void {
+    this._options.step = step;
+    if (this._sliderLow) {
+      this._sliderLow.step = String(step);
+    }
+    if (this._sliderHigh) {
+      this._sliderHigh.step = String(step);
+    }
+  }
+
+  /**
+   * Updates the visual range highlight bar.
+   */
+  private _updateRangeHighlight(): void {
+    if (!this._rangeHighlight || !this._sliderLow || !this._sliderHigh) return;
+
+    const low = parseFloat(this._sliderLow.value);
+    const high = parseFloat(this._sliderHigh.value);
+    const min = this._options.min;
+    const max = this._options.max;
+    const percentLow = ((low - min) / (max - min)) * 100;
+    const percentHigh = ((high - min) / (max - min)) * 100;
+    this._rangeHighlight.style.left = `${percentLow}%`;
+    this._rangeHighlight.style.width = `${percentHigh - percentLow}%`;
   }
 
   /**

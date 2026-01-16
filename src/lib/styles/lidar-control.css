@@ -788,37 +788,3 @@
   margin: 0;
   cursor: pointer;
 }
-
-.lidar-range-inputs {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.lidar-range-input-label {
-  font-size: 11px;
-  color: #666;
-  margin-right: 2px;
-}
-
-.lidar-range-input {
-  width: 55px;
-  padding: 4px 6px;
-  font-size: 11px;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  outline: none;
-  text-align: center;
-}
-
-.lidar-range-input:focus {
-  border-color: #159895;
-  box-shadow: 0 0 0 2px rgba(21, 152, 149, 0.15);
-}
-
-.lidar-range-unit {
-  font-size: 10px;
-  color: #888;
-  margin-right: 8px;
-}

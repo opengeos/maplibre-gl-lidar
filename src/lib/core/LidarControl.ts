@@ -1738,38 +1738,20 @@ export class LidarControl implements IControl {
       return;
     }
 
-    const colorScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
-    const colorRange = this._state.colorRange;
-
-    // Get data bounds based on color scheme
-    let dataBounds: { min: number; max: number };
-    if (colorScheme === 'intensity') {
-      dataBounds = this._getIntensityBounds();
+    // Get the actual computed bounds from PointCloudManager
+    // This returns the real bounds used for coloring (including actual percentile calculations)
+    const actualBounds = this._pointCloudManager?.getLastComputedBounds();
+    if (actualBounds) {
+      this._state.computedColorBounds = actualBounds;
     } else {
-      dataBounds = this._getElevationBounds();
+      // Fallback to data bounds if no computed bounds available
+      const colorScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+      if (colorScheme === 'intensity') {
+        this._state.computedColorBounds = this._getIntensityBounds();
+      } else {
+        this._state.computedColorBounds = this._getElevationBounds();
+      }
     }
-
-    // Compute the actual bounds based on color range mode
-    let computedBounds: { min: number; max: number };
-    if (colorRange.mode === 'absolute') {
-      computedBounds = {
-        min: colorRange.absoluteMin ?? dataBounds.min,
-        max: colorRange.absoluteMax ?? dataBounds.max,
-      };
-    } else {
-      // For percentile mode, use the percentile values to estimate bounds
-      // The actual percentile computation happens in ColorSchemeProcessor,
-      // but we approximate here for display purposes
-      const pLow = colorRange.percentileLow ?? 2;
-      const pHigh = colorRange.percentileHigh ?? 98;
-      const range = dataBounds.max - dataBounds.min;
-      computedBounds = {
-        min: dataBounds.min + range * (pLow / 100),
-        max: dataBounds.min + range * (pHigh / 100),
-      };
-    }
-
-    this._state.computedColorBounds = computedBounds;
   }
 
   /**

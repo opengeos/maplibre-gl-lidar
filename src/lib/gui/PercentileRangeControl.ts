@@ -1,4 +1,5 @@
 import type { ColorRangeConfig } from '../core/types';
+import { DualRangeSlider } from './DualRangeSlider';
 
 /** Default percentile values */
 const DEFAULT_PERCENTILE_LOW = 2;
@@ -12,6 +13,8 @@ export interface PercentileRangeControlOptions {
   config: ColorRangeConfig;
   /** Data bounds for reference (used in absolute mode) */
   dataBounds?: { min: number; max: number };
+  /** Actual computed bounds from percentile calculation (for mode switching) */
+  computedBounds?: { min: number; max: number };
   /** Callback when the configuration changes */
   onChange: (config: ColorRangeConfig) => void;
 }
@@ -19,17 +22,17 @@ export interface PercentileRangeControlOptions {
 /**
  * A control component for configuring color range mapping.
  * Allows switching between percentile and absolute value modes.
+ * Uses dual range sliders for intuitive range selection.
  */
 export class PercentileRangeControl {
   private _options: PercentileRangeControlOptions;
   private _percentileRadio?: HTMLInputElement;
   private _absoluteRadio?: HTMLInputElement;
-  private _percentileInputsContainer?: HTMLElement;
-  private _absoluteInputsContainer?: HTMLElement;
-  private _percentileLowInput?: HTMLInputElement;
-  private _percentileHighInput?: HTMLInputElement;
-  private _absoluteMinInput?: HTMLInputElement;
-  private _absoluteMaxInput?: HTMLInputElement;
+  private _percentileSliderContainer?: HTMLElement;
+  private _absoluteSliderContainer?: HTMLElement;
+  private _percentileSlider?: DualRangeSlider;
+  private _absoluteSlider?: DualRangeSlider;
+  private _computedBounds?: { min: number; max: number };
 
   /**
    * Creates a new PercentileRangeControl instance.
@@ -38,6 +41,7 @@ export class PercentileRangeControl {
    */
   constructor(options: PercentileRangeControlOptions) {
     this._options = { ...options };
+    this._computedBounds = options.computedBounds;
   }
 
   /**
@@ -98,97 +102,53 @@ export class PercentileRangeControl {
 
     container.appendChild(modeContainer);
 
-    // Percentile inputs container
-    const percentileInputsContainer = document.createElement('div');
-    percentileInputsContainer.className = 'lidar-range-inputs';
-    percentileInputsContainer.style.display = this._options.config.mode === 'percentile' ? 'flex' : 'none';
-    this._percentileInputsContainer = percentileInputsContainer;
+    // Percentile slider container
+    const percentileSliderContainer = document.createElement('div');
+    percentileSliderContainer.style.display = this._options.config.mode === 'percentile' ? 'block' : 'none';
+    this._percentileSliderContainer = percentileSliderContainer;
 
-    // Low percentile input
-    const lowLabel = document.createElement('label');
-    lowLabel.textContent = 'Low:';
-    lowLabel.className = 'lidar-range-input-label';
-    const percentileLowInput = document.createElement('input');
-    percentileLowInput.type = 'number';
-    percentileLowInput.className = 'lidar-range-input';
-    percentileLowInput.min = '0';
-    percentileLowInput.max = '100';
-    percentileLowInput.step = '1';
-    percentileLowInput.value = String(this._options.config.percentileLow ?? 2);
-    this._percentileLowInput = percentileLowInput;
+    // Create percentile dual range slider (0-100%)
+    this._percentileSlider = new DualRangeSlider({
+      label: '',
+      min: 0,
+      max: 100,
+      step: 1,
+      valueLow: this._options.config.percentileLow ?? DEFAULT_PERCENTILE_LOW,
+      valueHigh: this._options.config.percentileHigh ?? DEFAULT_PERCENTILE_HIGH,
+      onChange: (low, high) => this._onPercentileChange(low, high),
+      formatValue: (v) => `${v.toFixed(0)}%`,
+    });
+    percentileSliderContainer.appendChild(this._percentileSlider.render());
 
-    // High percentile input
-    const highLabel = document.createElement('label');
-    highLabel.textContent = 'High:';
-    highLabel.className = 'lidar-range-input-label';
-    const percentileHighInput = document.createElement('input');
-    percentileHighInput.type = 'number';
-    percentileHighInput.className = 'lidar-range-input';
-    percentileHighInput.min = '0';
-    percentileHighInput.max = '100';
-    percentileHighInput.step = '1';
-    percentileHighInput.value = String(this._options.config.percentileHigh ?? 98);
-    this._percentileHighInput = percentileHighInput;
+    container.appendChild(percentileSliderContainer);
 
-    // Percentage labels
-    const pctLabel1 = document.createElement('span');
-    pctLabel1.textContent = '%';
-    pctLabel1.className = 'lidar-range-unit';
-    const pctLabel2 = document.createElement('span');
-    pctLabel2.textContent = '%';
-    pctLabel2.className = 'lidar-range-unit';
+    // Absolute slider container
+    const absoluteSliderContainer = document.createElement('div');
+    absoluteSliderContainer.style.display = this._options.config.mode === 'absolute' ? 'block' : 'none';
+    this._absoluteSliderContainer = absoluteSliderContainer;
 
-    percentileInputsContainer.appendChild(lowLabel);
-    percentileInputsContainer.appendChild(percentileLowInput);
-    percentileInputsContainer.appendChild(pctLabel1);
-    percentileInputsContainer.appendChild(highLabel);
-    percentileInputsContainer.appendChild(percentileHighInput);
-    percentileInputsContainer.appendChild(pctLabel2);
+    // Create absolute dual range slider
+    const dataBounds = this._options.dataBounds || { min: 0, max: 100 };
+    const absMin = this._options.config.absoluteMin ?? dataBounds.min;
+    const absMax = this._options.config.absoluteMax ?? dataBounds.max;
 
-    container.appendChild(percentileInputsContainer);
+    this._absoluteSlider = new DualRangeSlider({
+      label: '',
+      min: dataBounds.min,
+      max: dataBounds.max,
+      step: this._getAbsoluteStep(dataBounds),
+      valueLow: absMin,
+      valueHigh: absMax,
+      onChange: (low, high) => this._onAbsoluteChange(low, high),
+      formatValue: (v) => this._formatAbsoluteValue(v),
+    });
+    absoluteSliderContainer.appendChild(this._absoluteSlider.render());
 
-    // Absolute inputs container
-    const absoluteInputsContainer = document.createElement('div');
-    absoluteInputsContainer.className = 'lidar-range-inputs';
-    absoluteInputsContainer.style.display = this._options.config.mode === 'absolute' ? 'flex' : 'none';
-    this._absoluteInputsContainer = absoluteInputsContainer;
+    container.appendChild(absoluteSliderContainer);
 
-    // Min value input
-    const minLabel = document.createElement('label');
-    minLabel.textContent = 'Min:';
-    minLabel.className = 'lidar-range-input-label';
-    const absoluteMinInput = document.createElement('input');
-    absoluteMinInput.type = 'number';
-    absoluteMinInput.className = 'lidar-range-input';
-    absoluteMinInput.step = 'any';
-    absoluteMinInput.value = String(this._options.config.absoluteMin ?? this._options.dataBounds?.min ?? 0);
-    this._absoluteMinInput = absoluteMinInput;
-
-    // Max value input
-    const maxLabel = document.createElement('label');
-    maxLabel.textContent = 'Max:';
-    maxLabel.className = 'lidar-range-input-label';
-    const absoluteMaxInput = document.createElement('input');
-    absoluteMaxInput.type = 'number';
-    absoluteMaxInput.className = 'lidar-range-input';
-    absoluteMaxInput.step = 'any';
-    absoluteMaxInput.value = String(this._options.config.absoluteMax ?? this._options.dataBounds?.max ?? 100);
-    this._absoluteMaxInput = absoluteMaxInput;
-
-    absoluteInputsContainer.appendChild(minLabel);
-    absoluteInputsContainer.appendChild(absoluteMinInput);
-    absoluteInputsContainer.appendChild(maxLabel);
-    absoluteInputsContainer.appendChild(absoluteMaxInput);
-
-    container.appendChild(absoluteInputsContainer);
-
-    // Event listeners
+    // Event listeners for mode toggle
     percentileRadio.addEventListener('change', () => this._onModeChange());
     absoluteRadio.addEventListener('change', () => this._onModeChange());
-    percentileLowInput.addEventListener('change', () => this._onInputChange());
-    percentileHighInput.addEventListener('change', () => this._onInputChange());
-    absoluteMinInput.addEventListener('change', () => this._onInputChange());
-    absoluteMaxInput.addEventListener('change', () => this._onInputChange());
 
     return container;
   }
@@ -206,20 +166,22 @@ export class PercentileRangeControl {
       this._absoluteRadio.checked = config.mode === 'absolute';
     }
 
-    if (this._percentileLowInput) {
-      this._percentileLowInput.value = String(config.percentileLow ?? 2);
-    }
-    if (this._percentileHighInput) {
-      this._percentileHighInput.value = String(config.percentileHigh ?? 98);
-    }
-    if (this._absoluteMinInput) {
-      this._absoluteMinInput.value = String(config.absoluteMin ?? this._options.dataBounds?.min ?? 0);
-    }
-    if (this._absoluteMaxInput) {
-      this._absoluteMaxInput.value = String(config.absoluteMax ?? this._options.dataBounds?.max ?? 100);
+    if (this._percentileSlider) {
+      this._percentileSlider.setRange(
+        config.percentileLow ?? DEFAULT_PERCENTILE_LOW,
+        config.percentileHigh ?? DEFAULT_PERCENTILE_HIGH
+      );
     }
 
-    this._updateInputsVisibility();
+    if (this._absoluteSlider) {
+      const dataBounds = this._options.dataBounds || { min: 0, max: 100 };
+      this._absoluteSlider.setRange(
+        config.absoluteMin ?? dataBounds.min,
+        config.absoluteMax ?? dataBounds.max
+      );
+    }
+
+    this._updateSlidersVisibility();
   }
 
   /**
@@ -230,13 +192,37 @@ export class PercentileRangeControl {
   setDataBounds(bounds: { min: number; max: number }): void {
     this._options.dataBounds = bounds;
 
-    // Update absolute inputs if they don't have values set
-    if (this._absoluteMinInput && !this._options.config.absoluteMin) {
-      this._absoluteMinInput.value = String(bounds.min);
+    // Update absolute slider bounds and step
+    if (this._absoluteSlider) {
+      this._absoluteSlider.setBounds(bounds.min, bounds.max);
+      this._absoluteSlider.setStep(this._getAbsoluteStep(bounds));
+
+      // If absolute values not explicitly set, use the bounds
+      if (this._options.config.absoluteMin === undefined) {
+        this._options.config.absoluteMin = bounds.min;
+      }
+      if (this._options.config.absoluteMax === undefined) {
+        this._options.config.absoluteMax = bounds.max;
+      }
+
+      // Clamp existing values to new bounds
+      const currentMin = this._options.config.absoluteMin ?? bounds.min;
+      const currentMax = this._options.config.absoluteMax ?? bounds.max;
+      const clampedMin = Math.max(bounds.min, Math.min(bounds.max, currentMin));
+      const clampedMax = Math.max(bounds.min, Math.min(bounds.max, currentMax));
+
+      this._absoluteSlider.setRange(clampedMin, clampedMax);
     }
-    if (this._absoluteMaxInput && !this._options.config.absoluteMax) {
-      this._absoluteMaxInput.value = String(bounds.max);
-    }
+  }
+
+  /**
+   * Sets the actual computed bounds from percentile calculation.
+   * These bounds are used when switching from percentile to absolute mode.
+   *
+   * @param bounds - The actual computed bounds
+   */
+  setComputedBounds(bounds: { min: number; max: number }): void {
+    this._computedBounds = bounds;
   }
 
   /**
@@ -249,8 +235,26 @@ export class PercentileRangeControl {
   }
 
   /**
+   * Handles percentile slider change.
+   */
+  private _onPercentileChange(low: number, high: number): void {
+    this._options.config.percentileLow = low;
+    this._options.config.percentileHigh = high;
+    this._emitChange();
+  }
+
+  /**
+   * Handles absolute slider change.
+   */
+  private _onAbsoluteChange(low: number, high: number): void {
+    this._options.config.absoluteMin = low;
+    this._options.config.absoluteMax = high;
+    this._emitChange();
+  }
+
+  /**
    * Handles mode change (percentile/absolute toggle).
-   * Syncs values when switching between modes.
+   * Syncs values when switching between modes using actual computed bounds.
    */
   private _onModeChange(): void {
     const newMode = this._percentileRadio?.checked ? 'percentile' : 'absolute';
@@ -258,33 +262,33 @@ export class PercentileRangeControl {
 
     // Sync values when switching modes
     if (newMode !== oldMode) {
-      if (newMode === 'absolute' && this._options.dataBounds) {
-        // Switching from percentile to absolute: calculate absolute values from percentile
-        const { min: dataMin, max: dataMax } = this._options.dataBounds;
-        const range = dataMax - dataMin;
-        const pLow = this._options.config.percentileLow ?? DEFAULT_PERCENTILE_LOW;
-        const pHigh = this._options.config.percentileHigh ?? DEFAULT_PERCENTILE_HIGH;
+      if (newMode === 'absolute') {
+        // Switching from percentile to absolute: use actual computed bounds
+        if (this._computedBounds) {
+          // Use the actual computed percentile bounds
+          this._options.config.absoluteMin = this._computedBounds.min;
+          this._options.config.absoluteMax = this._computedBounds.max;
+        } else if (this._options.dataBounds) {
+          // Fallback to linear approximation if no computed bounds available
+          const { min: dataMin, max: dataMax } = this._options.dataBounds;
+          const range = dataMax - dataMin;
+          const pLow = this._options.config.percentileLow ?? DEFAULT_PERCENTILE_LOW;
+          const pHigh = this._options.config.percentileHigh ?? DEFAULT_PERCENTILE_HIGH;
 
-        // Calculate absolute values from percentile (approximate)
-        const absoluteMin = dataMin + range * (pLow / 100);
-        const absoluteMax = dataMin + range * (pHigh / 100);
-
-        this._options.config.absoluteMin = parseFloat(absoluteMin.toFixed(2));
-        this._options.config.absoluteMax = parseFloat(absoluteMax.toFixed(2));
-
-        // Update input fields
-        if (this._absoluteMinInput) {
-          this._absoluteMinInput.value = String(this._options.config.absoluteMin);
+          this._options.config.absoluteMin = parseFloat((dataMin + range * (pLow / 100)).toFixed(2));
+          this._options.config.absoluteMax = parseFloat((dataMin + range * (pHigh / 100)).toFixed(2));
         }
-        if (this._absoluteMaxInput) {
-          this._absoluteMaxInput.value = String(this._options.config.absoluteMax);
+
+        // Update absolute slider
+        if (this._absoluteSlider && this._options.config.absoluteMin !== undefined && this._options.config.absoluteMax !== undefined) {
+          this._absoluteSlider.setRange(this._options.config.absoluteMin, this._options.config.absoluteMax);
         }
       }
       // When switching from absolute to percentile, keep existing percentile values
     }
 
     this._options.config.mode = newMode;
-    this._updateInputsVisibility();
+    this._updateSlidersVisibility();
     this._emitChange();
   }
 
@@ -313,52 +317,62 @@ export class PercentileRangeControl {
     if (this._absoluteRadio) {
       this._absoluteRadio.checked = false;
     }
-    if (this._percentileLowInput) {
-      this._percentileLowInput.value = String(DEFAULT_PERCENTILE_LOW);
+    if (this._percentileSlider) {
+      this._percentileSlider.setRange(DEFAULT_PERCENTILE_LOW, DEFAULT_PERCENTILE_HIGH);
     }
-    if (this._percentileHighInput) {
-      this._percentileHighInput.value = String(DEFAULT_PERCENTILE_HIGH);
-    }
-    if (this._absoluteMinInput) {
-      this._absoluteMinInput.value = String(this._options.config.absoluteMin ?? 0);
-    }
-    if (this._absoluteMaxInput) {
-      this._absoluteMaxInput.value = String(this._options.config.absoluteMax ?? 100);
+    if (this._absoluteSlider && this._options.config.absoluteMin !== undefined && this._options.config.absoluteMax !== undefined) {
+      this._absoluteSlider.setRange(this._options.config.absoluteMin, this._options.config.absoluteMax);
     }
 
-    this._updateInputsVisibility();
+    this._updateSlidersVisibility();
     this._emitChange();
   }
 
   /**
-   * Handles input value changes.
+   * Updates the visibility of slider containers based on mode.
    */
-  private _onInputChange(): void {
-    if (this._options.config.mode === 'percentile') {
-      const low = parseFloat(this._percentileLowInput?.value ?? '2');
-      const high = parseFloat(this._percentileHighInput?.value ?? '98');
-      this._options.config.percentileLow = Math.max(0, Math.min(100, low));
-      this._options.config.percentileHigh = Math.max(0, Math.min(100, high));
+  private _updateSlidersVisibility(): void {
+    if (this._percentileSliderContainer) {
+      this._percentileSliderContainer.style.display =
+        this._options.config.mode === 'percentile' ? 'block' : 'none';
+    }
+    if (this._absoluteSliderContainer) {
+      this._absoluteSliderContainer.style.display =
+        this._options.config.mode === 'absolute' ? 'block' : 'none';
+    }
+  }
+
+  /**
+   * Gets the appropriate step value for absolute slider based on data range.
+   */
+  private _getAbsoluteStep(bounds: { min: number; max: number }): number {
+    const range = bounds.max - bounds.min;
+    if (range <= 1) {
+      return 0.01;
+    } else if (range <= 10) {
+      return 0.1;
+    } else if (range <= 100) {
+      return 1;
+    } else if (range <= 1000) {
+      return 1;
     } else {
-      const min = parseFloat(this._absoluteMinInput?.value ?? '0');
-      const max = parseFloat(this._absoluteMaxInput?.value ?? '100');
-      this._options.config.absoluteMin = min;
-      this._options.config.absoluteMax = max;
+      return Math.round(range / 100);
     }
-    this._emitChange();
   }
 
   /**
-   * Updates the visibility of input containers based on mode.
+   * Formats absolute value for display based on the data range.
    */
-  private _updateInputsVisibility(): void {
-    if (this._percentileInputsContainer) {
-      this._percentileInputsContainer.style.display =
-        this._options.config.mode === 'percentile' ? 'flex' : 'none';
-    }
-    if (this._absoluteInputsContainer) {
-      this._absoluteInputsContainer.style.display =
-        this._options.config.mode === 'absolute' ? 'flex' : 'none';
+  private _formatAbsoluteValue(value: number): string {
+    const bounds = this._options.dataBounds || { min: 0, max: 100 };
+    const range = bounds.max - bounds.min;
+
+    if (range <= 1) {
+      return value.toFixed(2);
+    } else if (range <= 10) {
+      return value.toFixed(1);
+    } else {
+      return value.toFixed(0);
     }
   }
 
