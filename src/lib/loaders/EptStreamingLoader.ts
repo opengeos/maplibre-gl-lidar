@@ -202,6 +202,8 @@ export class EptStreamingLoader {
 
   // Hierarchy cache
   private _hierarchyCache: Map<string, EptHierarchy> = new Map();
+  private _hierarchyLoading: Set<string> = new Set();
+  private _hierarchyFailures: Map<string, number> = new Map();
   private _subtreeRoots: Set<string> = new Set();
   private _rootHierarchyLoaded: boolean = false;
 
@@ -600,28 +602,32 @@ export class EptStreamingLoader {
    * @param key - Hierarchy key (e.g., "0-0-0-0")
    */
   private async _loadHierarchy(key: string): Promise<void> {
-    if (this._hierarchyCache.has(key)) return;
+    if (this._hierarchyCache.has(key) || this._hierarchyLoading.has(key)) return;
 
     const url = `${this._baseUrl}/ept-hierarchy/${key}.json`;
+    this._hierarchyLoading.add(key);
     try {
       const response = await fetch(url);
       if (!response.ok) {
+        this._hierarchyFailures.set(key, Date.now());
         console.warn(`Failed to load hierarchy ${key}: ${response.status}`);
         return;
       }
 
       const hierarchy: EptHierarchy = await response.json();
       this._hierarchyCache.set(key, hierarchy);
+      this._hierarchyFailures.delete(key);
 
       // Process hierarchy entries
       for (const [nodeKey, value] of Object.entries(hierarchy)) {
         const keyArray = this._parseNodeKey(nodeKey);
         const { bounds, boundsWgs84 } = this._calculateNodeBounds(keyArray);
+        const existingNode = this._nodeCache.get(nodeKey);
 
         if (value === -1) {
           // Subtree root - create a placeholder entry and mark for later loading
           this._subtreeRoots.add(nodeKey);
-          if (!this._nodeCache.has(nodeKey)) {
+          if (!existingNode) {
             this._nodeCache.set(nodeKey, {
               key: nodeKey,
               keyArray,
@@ -631,20 +637,31 @@ export class EptStreamingLoader {
               boundsWgs84,
             });
           }
-        } else if (value > 0 && !this._nodeCache.has(nodeKey)) {
-          // Create node cache entry
-          this._nodeCache.set(nodeKey, {
-            key: nodeKey,
-            keyArray,
-            state: 'pending',
-            pointCount: value,
-            bounds,
-            boundsWgs84,
-          });
+        } else if (value > 0) {
+          if (existingNode?.state === 'subtree') {
+            // Subtree root entries appear again in their own hierarchy file
+            existingNode.state = 'pending';
+            existingNode.pointCount = value;
+            existingNode.bounds = bounds;
+            existingNode.boundsWgs84 = boundsWgs84;
+          } else if (!existingNode) {
+            // Create node cache entry
+            this._nodeCache.set(nodeKey, {
+              key: nodeKey,
+              keyArray,
+              state: 'pending',
+              pointCount: value,
+              bounds,
+              boundsWgs84,
+            });
+          }
         }
       }
     } catch (error) {
+      this._hierarchyFailures.set(key, Date.now());
       console.warn(`Error loading hierarchy ${key}:`, error);
+    } finally {
+      this._hierarchyLoading.delete(key);
     }
   }
 
@@ -679,9 +696,11 @@ export class EptStreamingLoader {
 
     // Load subtree hierarchies in multiple passes to discover nested subtrees
     // Each pass may reveal new subtrees that need to be loaded
-    const maxSubtreesToLoad = this._options.maxSubtreesPerViewport;
+    const maxSubtreesToLoad = Math.max(1, this._options.maxSubtreesPerViewport);
     const loadedSubtrees = new Set<string>();
     const maxPasses = 3;
+    const now = Date.now();
+    const hierarchyRetryCooldownMs = 5000;
 
     for (let pass = 0; pass < maxPasses; pass++) {
       // Find subtrees that intersect viewport and haven't been loaded yet
@@ -693,9 +712,12 @@ export class EptStreamingLoader {
         if (depth > targetDepth + 3) continue;
 
         // Check if this subtree intersects viewport and hasn't been processed
+        const lastFailure = this._hierarchyFailures.get(node.key);
         if (node.state === 'subtree' &&
             !this._hierarchyCache.has(node.key) &&
+            !this._hierarchyLoading.has(node.key) &&
             !loadedSubtrees.has(node.key) &&
+            (!lastFailure || (now - lastFailure) >= hierarchyRetryCooldownMs) &&
             this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
           const priority = this._calculateNodePriority(node.boundsWgs84, viewport);
           subtreeCandidates.push({ key: node.key, priority });
@@ -720,7 +742,6 @@ export class EptStreamingLoader {
 
     // Second pass: collect loadable nodes
     const nodesToLoad: EptCachedNode[] = [];
-    const now = Date.now();
     const retryCooldownMs = 5000; // Wait 5 seconds before retrying failed nodes
 
     for (const [, node] of this._nodeCache) {
@@ -1163,6 +1184,36 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Checks whether there are subtree hierarchies still pending for the viewport.
+   *
+   * @param viewport - Current viewport information
+   * @returns True if more subtree hierarchies should be loaded
+   */
+  hasPendingSubtrees(viewport: ViewportInfo): boolean {
+    if (!this._isInitialized) return false;
+
+    const targetDepth = viewport.targetDepth;
+    const now = Date.now();
+    const hierarchyRetryCooldownMs = 5000;
+
+    for (const [, node] of this._nodeCache) {
+      const depth = node.keyArray[0];
+      if (depth > targetDepth + 3) continue;
+
+      const lastFailure = this._hierarchyFailures.get(node.key);
+      if (node.state === 'subtree' &&
+          !this._hierarchyCache.has(node.key) &&
+          !this._hierarchyLoading.has(node.key) &&
+          (!lastFailure || (now - lastFailure) >= hierarchyRetryCooldownMs) &&
+          this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Gets the current streaming progress.
    */
   private _getProgressEvent(): StreamingProgressEvent {
@@ -1258,6 +1309,8 @@ export class EptStreamingLoader {
     this._loadingQueue = [];
     this._nodeCache.clear();
     this._hierarchyCache.clear();
+    this._hierarchyLoading.clear();
+    this._hierarchyFailures.clear();
     this._subtreeRoots.clear();
     this._eventHandlers.clear();
 

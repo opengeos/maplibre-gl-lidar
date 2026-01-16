@@ -103,6 +103,7 @@ export class LidarControl implements IControl {
   private _streamingLoaders: Map<string, CopcStreamingLoader> = new Map();
   private _eptStreamingLoaders: Map<string, EptStreamingLoader> = new Map();
   private _viewportManagers: Map<string, ViewportManager> = new Map();
+  private _eptViewportRequestIds: Map<string, number> = new Map();
 
   /**
    * Creates a new LidarControl instance.
@@ -1042,12 +1043,20 @@ export class LidarControl implements IControl {
    */
   private async _handleViewportChangeForEptStreaming(
     viewport: ViewportInfo,
-    datasetId: string
+    datasetId: string,
+    requestId?: number
   ): Promise<void> {
     const eptLoader = this._eptStreamingLoaders.get(datasetId);
     if (!eptLoader) return;
 
     try {
+      const currentRequestId = requestId ?? (this._eptViewportRequestIds.get(datasetId) ?? 0) + 1;
+      if (requestId === undefined) {
+        this._eptViewportRequestIds.set(datasetId, currentRequestId);
+      }
+
+      if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
       const nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
 
       for (const node of nodesToLoad) {
@@ -1055,6 +1064,14 @@ export class LidarControl implements IControl {
       }
 
       await eptLoader.loadQueuedNodes();
+
+      if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      if (eptLoader.hasPendingSubtrees(viewport)) {
+        setTimeout(() => {
+          this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
+        }, 100);
+      }
     } catch (err) {
       console.warn('Failed to load EPT nodes for viewport:', err);
     }
