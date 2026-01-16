@@ -179,10 +179,11 @@ function getVerticalUnitConversionFactor(wkt: string): number {
  */
 const DEFAULT_OPTIONS: Required<StreamingLoaderOptions> = {
   pointBudget: 5_000_000,
-  maxConcurrentRequests: 4,
-  viewportDebounceMs: 150,
+  maxConcurrentRequests: 8,
+  viewportDebounceMs: 100,
   minDetailZoom: 10,
   maxOctreeDepth: 20,
+  maxSubtreesPerViewport: 60,
 };
 
 /**
@@ -676,27 +677,45 @@ export class EptStreamingLoader {
 
     const targetDepth = viewport.targetDepth;
 
-    // First pass: find subtree nodes that intersect viewport and load their hierarchies
-    // This handles large datasets where data is nested in subtrees
-    const subtreesToLoad: string[] = [];
-    for (const [, node] of this._nodeCache) {
-      const depth = node.keyArray[0];
+    // Load subtree hierarchies in multiple passes to discover nested subtrees
+    // Each pass may reveal new subtrees that need to be loaded
+    const maxSubtreesToLoad = this._options.maxSubtreesPerViewport;
+    const loadedSubtrees = new Set<string>();
+    const maxPasses = 3;
 
-      // Only check subtrees within our target depth range
-      if (depth > targetDepth + 2) continue;
+    for (let pass = 0; pass < maxPasses; pass++) {
+      // Find subtrees that intersect viewport and haven't been loaded yet
+      const subtreeCandidates: Array<{ key: string; priority: number }> = [];
+      for (const [, node] of this._nodeCache) {
+        const depth = node.keyArray[0];
 
-      // Check if this subtree intersects viewport
-      if (node.state === 'subtree' && this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
-        if (!this._hierarchyCache.has(node.key)) {
-          subtreesToLoad.push(node.key);
+        // Only check subtrees within our target depth range
+        if (depth > targetDepth + 3) continue;
+
+        // Check if this subtree intersects viewport and hasn't been processed
+        if (node.state === 'subtree' &&
+            !this._hierarchyCache.has(node.key) &&
+            !loadedSubtrees.has(node.key) &&
+            this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
+          const priority = this._calculateNodePriority(node.boundsWgs84, viewport);
+          subtreeCandidates.push({ key: node.key, priority });
         }
       }
-    }
 
-    // Load intersecting subtree hierarchies (limit to prevent too many requests)
-    const maxSubtreesToLoad = 10;
-    for (const subtreeKey of subtreesToLoad.slice(0, maxSubtreesToLoad)) {
-      await this._loadHierarchy(subtreeKey);
+      // No more subtrees to load - done
+      if (subtreeCandidates.length === 0) break;
+
+      // Sort by priority (closest to center first) and limit per pass
+      subtreeCandidates.sort((a, b) => a.priority - b.priority);
+      const perPassLimit = Math.ceil(maxSubtreesToLoad / maxPasses);
+      const subtreesToProcess = subtreeCandidates.slice(0, perPassLimit).map(s => s.key);
+
+      // Fire requests in parallel
+      await Promise.all(subtreesToProcess.map(subtreeKey => this._loadHierarchy(subtreeKey)));
+      subtreesToProcess.forEach(key => loadedSubtrees.add(key));
+
+      // If we've loaded enough subtrees total, stop
+      if (loadedSubtrees.size >= maxSubtreesToLoad) break;
     }
 
     // Second pass: collect loadable nodes
@@ -719,7 +738,8 @@ export class EptStreamingLoader {
       }
 
       // Skip nodes deeper than we need
-      if (depth > targetDepth + 1) continue;
+      // Use +2 to allow loading slightly more detailed nodes for better coverage
+      if (depth > targetDepth + 2) continue;
 
       // Check viewport intersection
       if (!this._boundsIntersectsViewport(node.boundsWgs84, viewport)) {
