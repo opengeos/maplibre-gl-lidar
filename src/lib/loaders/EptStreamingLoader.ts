@@ -1303,6 +1303,47 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Estimates viewport coverage ratio by loaded nodes.
+   * Returns a value from 0 to 1 representing how much of the viewport
+   * is covered by loaded tiles.
+   *
+   * @param viewport - Current viewport information
+   * @param minDepth - Minimum octree depth to consider
+   * @returns Coverage ratio (0-1)
+   */
+  getViewportCoverageRatio(viewport: ViewportInfo, minDepth: number = 0): number {
+    const [west, south, east, north] = viewport.bounds;
+    const viewportArea = (east - west) * (north - south);
+    if (viewportArea <= 0) return 0;
+
+    let coveredArea = 0;
+
+    for (const [, node] of this._nodeCache) {
+      if (node.state !== 'loaded') continue;
+      if (node.keyArray[0] < minDepth) continue;
+
+      // Calculate intersection area with viewport
+      const nodeWest = node.boundsWgs84.minX;
+      const nodeSouth = node.boundsWgs84.minY;
+      const nodeEast = node.boundsWgs84.maxX;
+      const nodeNorth = node.boundsWgs84.maxY;
+
+      const intersectWest = Math.max(west, nodeWest);
+      const intersectEast = Math.min(east, nodeEast);
+      const intersectSouth = Math.max(south, nodeSouth);
+      const intersectNorth = Math.min(north, nodeNorth);
+
+      if (intersectWest < intersectEast && intersectSouth < intersectNorth) {
+        const intersectArea = (intersectEast - intersectWest) * (intersectNorth - intersectSouth);
+        coveredArea += intersectArea;
+      }
+    }
+
+    // Cap at 1.0 (overlapping nodes can cause > 1)
+    return Math.min(1.0, coveredArea / viewportArea);
+  }
+
+  /**
    * Gets the total number of loaded nodes.
    */
   getLoadedNodeCount(): number {

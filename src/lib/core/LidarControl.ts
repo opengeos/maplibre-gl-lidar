@@ -1060,6 +1060,7 @@ export class LidarControl implements IControl {
       curSouth > prevNorth
     );
 
+    // Reset if viewports don't intersect at all
     if (!intersects) return true;
 
     const prevWidth = prevEast - prevWest;
@@ -1067,7 +1068,9 @@ export class LidarControl implements IControl {
     const dx = current.center[0] - previous.center[0];
     const dy = current.center[1] - previous.center[1];
     const centerDistance = Math.sqrt(dx * dx + dy * dy);
-    const threshold = Math.max(prevWidth, prevHeight) * 0.6;
+
+    // Reset if center moved more than 30% of viewport dimension
+    const threshold = Math.max(prevWidth, prevHeight) * 0.3;
 
     return centerDistance > threshold;
   }
@@ -1107,17 +1110,31 @@ export class LidarControl implements IControl {
       let nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
 
       let resetSucceeded = false;
-      const budgetReached =
-        eptLoader.getLoadedPointCount() >= eptLoader.getPointBudget();
+      const loadedPoints = eptLoader.getLoadedPointCount();
+      const pointBudget = eptLoader.getPointBudget();
+      const budgetReached = loadedPoints >= pointBudget * 0.8; // 80% threshold
       const minDepthForCoverage = Math.max(0, viewport.targetDepth - 2);
-      const needsCoverage = !eptLoader.hasLoadedNodesInViewport(viewport, minDepthForCoverage);
-      const canLoadNewArea =
-        nodesToLoad.length > 0 || eptLoader.hasPendingSubtrees(viewport);
-      if (budgetReached && needsCoverage && canLoadNewArea) {
+
+      // Check coverage ratio - if less than 50% is covered, we need to load more
+      const coverageRatio = eptLoader.getViewportCoverageRatio(viewport, minDepthForCoverage);
+      const needsCoverage = coverageRatio < 0.5;
+
+      const hasPendingSubtrees = eptLoader.hasPendingSubtrees(viewport);
+      const hasPendingWork = nodesToLoad.length > 0 || hasPendingSubtrees;
+
+      // Reset if budget is reached but we need more coverage in current viewport
+      if (budgetReached && needsCoverage && hasPendingWork) {
         resetSucceeded = eptLoader.resetLoadedData();
         if (resetSucceeded) {
           nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
         }
+      }
+
+      // Also check if we have very low coverage but some budget left -
+      // this means we haven't loaded this area's subtrees yet
+      if (!budgetReached && coverageRatio < 0.1 && nodesToLoad.length === 0) {
+        // Force another subtree discovery pass
+        nodesToLoad = await eptLoader.selectNodesForViewport(viewport);
       }
 
       for (const node of nodesToLoad) {
@@ -1128,14 +1145,17 @@ export class LidarControl implements IControl {
 
       if (this._eptViewportRequestIds.get(datasetId) !== currentRequestId) return;
 
-      if (budgetReached && nodesToLoad.length > 0 && !resetSucceeded) {
+      // Only retry if we need more coverage AND there's pending work
+      // Don't retry if coverage is already good (>= 50%)
+      if (budgetReached && needsCoverage && nodesToLoad.length > 0 && !resetSucceeded) {
         setTimeout(() => {
           this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
         }, 200);
         return;
       }
 
-      if (eptLoader.hasPendingSubtrees(viewport)) {
+      // Continue loading subtrees if there are pending ones
+      if (hasPendingSubtrees) {
         setTimeout(() => {
           this._handleViewportChangeForEptStreaming(viewport, datasetId, currentRequestId);
         }, 100);
