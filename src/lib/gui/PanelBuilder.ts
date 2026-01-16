@@ -1,9 +1,12 @@
-import type { LidarState, ColorScheme, PointCloudInfo } from '../core/types';
+import type { LidarState, ColorScheme, PointCloudInfo, ColormapName, ColorRangeConfig } from '../core/types';
 import { FileInput } from './FileInput';
 import { RangeSlider } from './RangeSlider';
 import { DualRangeSlider } from './DualRangeSlider';
 import { ClassificationLegend } from './ClassificationLegend';
+import { Colorbar } from './Colorbar';
+import { PercentileRangeControl } from './PercentileRangeControl';
 import { formatNumber } from '../utils/helpers';
+import { COLORMAP_NAMES, COLORMAP_LABELS } from '../colorizers/Colormaps';
 
 /**
  * Callbacks for panel interactions
@@ -14,6 +17,8 @@ export interface PanelBuilderCallbacks {
   onPointSizeChange: (size: number) => void;
   onOpacityChange: (opacity: number) => void;
   onColorSchemeChange: (scheme: ColorScheme) => void;
+  onColormapChange: (colormap: ColormapName) => void;
+  onColorRangeChange: (config: ColorRangeConfig) => void;
   onUsePercentileChange: (usePercentile: boolean) => void;
   onElevationRangeChange: (range: [number, number] | null) => void;
   onPickableChange: (pickable: boolean) => void;
@@ -40,6 +45,12 @@ export class PanelBuilder {
   private _urlInput?: HTMLInputElement;
   private _loadButton?: HTMLButtonElement;
   private _colorSelect?: HTMLSelectElement;
+  private _colormapSelect?: HTMLSelectElement;
+  private _colormapGroup?: HTMLElement;
+  private _colorbar?: Colorbar;
+  private _colorbarContainer?: HTMLElement;
+  private _colorRangeControl?: PercentileRangeControl;
+  private _colorRangeContainer?: HTMLElement;
   private _percentileCheckbox?: HTMLInputElement;
   private _percentileGroup?: HTMLElement;
   private _pointSizeSlider?: RangeSlider;
@@ -143,7 +154,30 @@ export class PanelBuilder {
       this._updatePercentileVisibility(state.colorScheme);
     }
 
-    // Update percentile checkbox
+    // Update colormap selector
+    if (this._colormapSelect && state.colormap) {
+      this._colormapSelect.value = state.colormap;
+    }
+
+    // Update colorbar
+    if (this._colorbar) {
+      if (state.colormap) {
+        this._colorbar.setColormap(state.colormap);
+      }
+      if (state.computedColorBounds) {
+        this._colorbar.setRange(state.computedColorBounds.min, state.computedColorBounds.max);
+      }
+    }
+
+    // Update color range control
+    if (this._colorRangeControl && state.colorRange) {
+      this._colorRangeControl.setConfig(state.colorRange);
+      // Also update data bounds based on current color scheme
+      const bounds = this._getDataBoundsForCurrentScheme();
+      this._colorRangeControl.setDataBounds(bounds);
+    }
+
+    // Update percentile checkbox (legacy)
     if (this._percentileCheckbox) {
       this._percentileCheckbox.checked = state.usePercentile ?? true;
     }
@@ -324,11 +358,17 @@ export class PanelBuilder {
     colorGroup.appendChild(colorSelect);
     section.appendChild(colorGroup);
 
+    // Colormap selector (shown only for elevation and intensity)
+    section.appendChild(this._buildColormapSelector());
+
+    // Colorbar (shown only for elevation and intensity)
+    section.appendChild(this._buildColorbar());
+
     // Classification legend (shown only when classification scheme is selected)
     section.appendChild(this._buildClassificationLegend());
 
-    // Percentile range option (only for elevation and intensity)
-    section.appendChild(this._buildPercentileCheckbox());
+    // Color range control (replaces percentile checkbox)
+    section.appendChild(this._buildColorRangeControl());
 
     // Point size slider
     this._pointSizeSlider = new RangeSlider({
@@ -574,55 +614,153 @@ export class PanelBuilder {
   }
 
   /**
-   * Builds the percentile checkbox control for elevation/intensity coloring.
+   * Gets the intensity bounds.
+   * Intensity values are normalized to 0-1 range during loading.
    */
-  private _buildPercentileCheckbox(): HTMLElement {
+  private _getIntensityBounds(): { min: number; max: number } {
+    return { min: 0, max: 1 };
+  }
+
+  /**
+   * Gets the appropriate data bounds based on the current color scheme.
+   */
+  private _getDataBoundsForCurrentScheme(): { min: number; max: number } {
+    const colorScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+    if (colorScheme === 'intensity') {
+      return this._getIntensityBounds();
+    }
+    return this._getElevationBounds();
+  }
+
+  /**
+   * Builds the colormap selector dropdown.
+   */
+  private _buildColormapSelector(): HTMLElement {
     const group = document.createElement('div');
-    group.className = 'lidar-control-group';
-    this._percentileGroup = group;
-
-    const labelRow = document.createElement('div');
-    labelRow.className = 'lidar-control-label-row';
-    labelRow.style.cursor = 'pointer';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = 'lidar-percentile-checkbox';
-    checkbox.checked = this._state.usePercentile ?? true;
-    checkbox.style.marginRight = '6px';
-    this._percentileCheckbox = checkbox;
-
-    const label = document.createElement('label');
-    label.className = 'lidar-control-label';
-    label.htmlFor = 'lidar-percentile-checkbox';
-    label.style.display = 'inline';
-    label.style.cursor = 'pointer';
-    label.textContent = 'Use percentile range (2-98%)';
-    label.title = 'Clip outliers for better color distribution';
-
-    checkbox.addEventListener('change', () => {
-      this._callbacks.onUsePercentileChange(checkbox.checked);
-    });
-
-    labelRow.appendChild(checkbox);
-    labelRow.appendChild(label);
-    group.appendChild(labelRow);
+    group.className = 'lidar-colormap-group';
+    this._colormapGroup = group;
 
     // Set initial visibility based on current color scheme
     const currentScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
-    this._updatePercentileVisibility(currentScheme);
+    const showColormap = currentScheme === 'elevation' || currentScheme === 'intensity';
+    group.style.display = showColormap ? 'block' : 'none';
+
+    const label = document.createElement('label');
+    label.className = 'lidar-control-label';
+    label.textContent = 'Colormap';
+    group.appendChild(label);
+
+    // Select dropdown
+    const select = document.createElement('select');
+    select.className = 'lidar-colormap-select';
+
+    for (const name of COLORMAP_NAMES) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = COLORMAP_LABELS[name];
+      select.appendChild(option);
+    }
+    select.value = this._state.colormap || 'viridis';
+    this._colormapSelect = select;
+
+    select.addEventListener('change', () => {
+      const colormap = select.value as ColormapName;
+      this._callbacks.onColormapChange(colormap);
+    });
+
+    group.appendChild(select);
 
     return group;
   }
 
   /**
-   * Updates the visibility of the percentile checkbox and classification legend based on color scheme.
-   * Percentile shows for elevation and intensity. Legend shows for classification.
+   * Builds the colorbar component.
+   */
+  private _buildColorbar(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'lidar-control-group';
+    this._colorbarContainer = container;
+
+    // Set initial visibility based on current color scheme
+    const currentScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+    const showColorbar = (currentScheme === 'elevation' || currentScheme === 'intensity') && this._state.showColorbar;
+    container.style.display = showColorbar ? 'block' : 'none';
+
+    // Create the colorbar
+    this._colorbar = new Colorbar({
+      colormap: this._state.colormap || 'viridis',
+      minValue: this._state.computedColorBounds?.min ?? 0,
+      maxValue: this._state.computedColorBounds?.max ?? 100,
+    });
+
+    container.appendChild(this._colorbar.render());
+    return container;
+  }
+
+  /**
+   * Builds the color range control (replaces percentile checkbox).
+   */
+  private _buildColorRangeControl(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'lidar-control-group';
+    this._colorRangeContainer = container;
+
+    // Set initial visibility based on current color scheme
+    const currentScheme = typeof this._state.colorScheme === 'string' ? this._state.colorScheme : 'elevation';
+    const showControl = currentScheme === 'elevation' || currentScheme === 'intensity';
+    container.style.display = showControl ? 'block' : 'none';
+
+    // Get data bounds based on current color scheme
+    const dataBounds = this._getDataBoundsForCurrentScheme();
+
+    // Create the control
+    this._colorRangeControl = new PercentileRangeControl({
+      config: this._state.colorRange || {
+        mode: 'percentile',
+        percentileLow: 2,
+        percentileHigh: 98,
+      },
+      dataBounds,
+      onChange: (config) => {
+        this._callbacks.onColorRangeChange(config);
+      },
+    });
+
+    container.appendChild(this._colorRangeControl.render());
+    return container;
+  }
+
+  /**
+   * Updates the visibility of color-related controls based on color scheme.
+   * Shows colormap/colorbar/range for elevation and intensity.
+   * Shows classification legend for classification.
    */
   private _updatePercentileVisibility(colorScheme: string): void {
+    const showColorControls = colorScheme === 'elevation' || colorScheme === 'intensity';
+
+    // Show/hide colormap selector
+    if (this._colormapGroup) {
+      this._colormapGroup.style.display = showColorControls ? 'block' : 'none';
+    }
+
+    // Show/hide colorbar
+    if (this._colorbarContainer) {
+      this._colorbarContainer.style.display = showColorControls && this._state.showColorbar ? 'block' : 'none';
+    }
+
+    // Show/hide color range control and update bounds for the new scheme
+    if (this._colorRangeContainer) {
+      this._colorRangeContainer.style.display = showColorControls ? 'block' : 'none';
+    }
+    if (this._colorRangeControl && showColorControls) {
+      // Update data bounds when switching between elevation and intensity
+      const bounds = this._getDataBoundsForCurrentScheme();
+      this._colorRangeControl.setDataBounds(bounds);
+    }
+
+    // Legacy percentile group (keep for backward compatibility)
     if (this._percentileGroup) {
-      const showPercentile = colorScheme === 'elevation' || colorScheme === 'intensity';
-      this._percentileGroup.style.display = showPercentile ? 'block' : 'none';
+      this._percentileGroup.style.display = 'none'; // Hide legacy control
     }
 
     // Show/hide classification legend

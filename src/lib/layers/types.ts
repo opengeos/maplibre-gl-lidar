@@ -1,4 +1,4 @@
-import type { ColorScheme } from '../core/types';
+import type { ColorScheme, ColormapName, ColorRangeConfig } from '../core/types';
 
 /**
  * Information about a picked point
@@ -52,8 +52,20 @@ export interface PointCloudLayerOptions {
   /**
    * Whether to use percentile range (2-98%) for elevation/intensity coloring
    * @default true
+   * @deprecated Use colorRange instead
    */
   usePercentile: boolean;
+
+  /**
+   * Colormap to use for elevation/intensity coloring
+   * @default 'viridis'
+   */
+  colormap?: ColormapName;
+
+  /**
+   * Configuration for color range mapping (percentile or absolute bounds)
+   */
+  colorRange?: ColorRangeConfig;
 
   /**
    * Elevation range filter [min, max] or null for no filter

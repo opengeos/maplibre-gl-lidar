@@ -6,3 +6,7 @@ export { FileInput } from './FileInput';
 export type { FileInputOptions } from './FileInput';
 export { ClassificationLegend } from './ClassificationLegend';
 export type { ClassificationLegendOptions } from './ClassificationLegend';
+export { Colorbar } from './Colorbar';
+export type { ColorbarOptions } from './Colorbar';
+export { PercentileRangeControl } from './PercentileRangeControl';
+export type { PercentileRangeControlOptions } from './PercentileRangeControl';

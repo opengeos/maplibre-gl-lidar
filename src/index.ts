@@ -10,6 +10,7 @@ export { CopcStreamingLoader } from './lib/loaders/CopcStreamingLoader';
 export { EptStreamingLoader } from './lib/loaders/EptStreamingLoader';
 export { PointCloudManager } from './lib/layers/PointCloudManager';
 export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
+export { COLORMAPS, COLORMAP_NAMES, COLORMAP_LABELS, getColormap } from './lib/colorizers/Colormaps';
 
 // Layer control adapter
 export { LidarLayerAdapter } from './lib/adapters';
@@ -27,6 +28,8 @@ export type {
   ColorSchemeType,
   ColorSchemeConfig,
   CopcLoadingMode,
+  ColormapName,
+  ColorRangeConfig,
 } from './lib/core/types';
 
 export type {

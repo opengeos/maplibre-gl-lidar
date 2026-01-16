@@ -65,6 +65,14 @@ map.on('load', () => {
     pointSize: 2,
     opacity: 1.0,
     colorScheme: 'elevation',
+    // Colormap options (new features)
+    colormap: 'viridis',           // Choose from: viridis, plasma, inferno, magma, cividis, turbo, jet, rainbow, terrain, coolwarm, gray
+    showColorbar: true,            // Show colorbar legend with min/max values
+    colorRange: {                  // Customize the color range mapping
+      mode: 'percentile',          // 'percentile' or 'absolute'
+      percentileLow: 2,            // Lower percentile bound (default: 2)
+      percentileHigh: 98,          // Upper percentile bound (default: 98)
+    },
     // copcLoadingMode: 'dynamic',  // Auto-detected for COPC URLs, use 'full' to force download
     // streamingPointBudget: 5_000_000  // Max points in memory for streaming mode
     // panelMaxHeight: 600,
@@ -156,4 +164,28 @@ map.on('load', () => {
   // lidarControl.on('budgetreached', () => {
   //   console.log('Point budget reached');
   // });
+
+  // Colormap API examples:
+  // Change colormap programmatically
+  // lidarControl.setColormap('turbo');        // Switch to turbo colormap
+  // lidarControl.setColormap('terrain');      // Good for elevation visualization
+  // lidarControl.setColormap('plasma');       // Perceptually uniform colormap
+  //
+  // Change color range programmatically
+  // lidarControl.setColorRange({
+  //   mode: 'percentile',
+  //   percentileLow: 5,
+  //   percentileHigh: 95,
+  // });
+  //
+  // Use absolute value range
+  // lidarControl.setColorRange({
+  //   mode: 'absolute',
+  //   absoluteMin: 100,      // Minimum elevation in meters
+  //   absoluteMax: 200,      // Maximum elevation in meters
+  // });
+  //
+  // Get current colormap
+  // console.log('Current colormap:', lidarControl.getColormap());
+  // console.log('Current color range:', lidarControl.getColorRange());
 });

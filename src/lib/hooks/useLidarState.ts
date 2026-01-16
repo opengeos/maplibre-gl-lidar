@@ -13,6 +13,13 @@ const DEFAULT_STATE: LidarState = {
   pointSize: 2,
   opacity: 1.0,
   colorScheme: 'elevation',
+  colormap: 'viridis',
+  colorRange: {
+    mode: 'percentile',
+    percentileLow: 2,
+    percentileHigh: 98,
+  },
+  showColorbar: true,
   usePercentile: true,
   elevationRange: null,
   pointBudget: 1000000,

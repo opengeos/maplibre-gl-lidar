@@ -6,6 +6,38 @@ import type { Map } from 'maplibre-gl';
 export type CopcLoadingMode = 'full' | 'dynamic';
 
 /**
+ * Available colormap names (matplotlib-style)
+ */
+export type ColormapName =
+  | 'viridis'
+  | 'plasma'
+  | 'inferno'
+  | 'magma'
+  | 'cividis'
+  | 'turbo'
+  | 'jet'
+  | 'rainbow'
+  | 'terrain'
+  | 'coolwarm'
+  | 'gray';
+
+/**
+ * Configuration for color range mapping
+ */
+export interface ColorRangeConfig {
+  /** Mode for determining color range bounds */
+  mode: 'percentile' | 'absolute';
+  /** Lower percentile bound (used when mode is 'percentile') */
+  percentileLow: number;
+  /** Upper percentile bound (used when mode is 'percentile') */
+  percentileHigh: number;
+  /** Absolute minimum value (used when mode is 'absolute') */
+  absoluteMin?: number;
+  /** Absolute maximum value (used when mode is 'absolute') */
+  absoluteMax?: number;
+}
+
+/**
  * Color scheme options for point cloud visualization
  */
 export type ColorSchemeType = 'elevation' | 'intensity' | 'classification' | 'rgb';
@@ -115,8 +147,27 @@ export interface LidarControlOptions {
    * Whether to use percentile range (2-98%) for elevation/intensity coloring.
    * When true, outliers are clipped for better color distribution.
    * @default true
+   * @deprecated Use colorRange instead for more control
    */
   usePercentile?: boolean;
+
+  /**
+   * Colormap to use for elevation/intensity coloring
+   * @default 'viridis'
+   */
+  colormap?: ColormapName;
+
+  /**
+   * Configuration for color range mapping (percentile or absolute bounds)
+   * @default { mode: 'percentile', percentileLow: 2, percentileHigh: 98 }
+   */
+  colorRange?: ColorRangeConfig;
+
+  /**
+   * Whether to show the colorbar legend
+   * @default true
+   */
+  showColorbar?: boolean;
 
   /**
    * Maximum number of points to display
@@ -219,6 +270,14 @@ export interface LidarState {
   pointSize: number;
   opacity: number;
   colorScheme: ColorScheme;
+  /** Colormap to use for elevation/intensity coloring */
+  colormap: ColormapName;
+  /** Configuration for color range mapping */
+  colorRange: ColorRangeConfig;
+  /** Whether to show the colorbar legend */
+  showColorbar: boolean;
+  /** Computed color bounds for colorbar display */
+  computedColorBounds?: { min: number; max: number };
   /** Whether to use percentile range (2-98%) for elevation/intensity coloring */
   usePercentile: boolean;
   elevationRange: [number, number] | null;
