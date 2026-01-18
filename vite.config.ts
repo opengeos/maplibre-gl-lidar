@@ -5,6 +5,18 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
   plugins: [
+    // Plugin to redirect @loaders.gl/las bundled laz-perf to browser version
+    // This avoids Node.js-specific require('fs') and require('path') calls
+    {
+      name: 'redirect-loaders-gl-laz-perf',
+      enforce: 'pre',
+      resolveId(id, importer) {
+        if (id.includes('laz-perf') && importer?.includes('@loaders.gl/las')) {
+          return resolve(__dirname, 'node_modules/laz-perf/lib/web/laz-perf.js');
+        }
+        return null;
+      },
+    },
     react(),
     dts({
       include: ['src'],
@@ -15,6 +27,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      // Force laz-perf to use browser version (no fs/path requires)
+      'laz-perf': resolve(__dirname, 'node_modules/laz-perf/lib/web/index.js'),
     },
   },
   assetsInclude: ['**/*.wasm'],
