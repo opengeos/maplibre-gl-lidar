@@ -495,6 +495,32 @@ console.log(`Loaded ${data.pointCount} points`);
 
 **Note:** LAS 1.2 and 1.4 are loaded using copc.js for optimal performance. LAS 1.0, 1.1, and 1.3 files automatically fall back to @loaders.gl/las.
 
+## Framework Integration
+
+### Next.js
+
+When using maplibre-gl-lidar with Next.js, you need to configure webpack to handle Node.js built-in modules that are referenced (but not executed) in browser code. Add the following to your `next.config.js`:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+      };
+    }
+    return config;
+  },
+};
+
+module.exports = nextConfig;
+```
+
+This configuration tells webpack not to bundle the `fs` and `path` modules for client-side code. These modules are only referenced in environment-guarded code paths that never execute in browsers.
+
 ## Coordinate Systems
 
 Point clouds are automatically transformed to WGS84 (EPSG:4326) for display on the map. The loader reads the WKT coordinate reference system from the file and uses proj4 to transform coordinates. Supported features:
