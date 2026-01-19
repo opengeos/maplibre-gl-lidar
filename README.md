@@ -4,6 +4,8 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 
 [![npm version](https://img.shields.io/npm/v/maplibre-gl-lidar.svg)](https://www.npmjs.com/package/maplibre-gl-lidar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Open in CodeSandbox](https://img.shields.io/badge/Open%20in-CodeSandbox-blue?logo=codesandbox)](https://codesandbox.io/p/github/opengeos/maplibre-gl-lidar)
+[![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-blue?logo=stackblitz)](https://stackblitz.com/github/opengeos/maplibre-gl-lidar)
 
 ## Features
 
