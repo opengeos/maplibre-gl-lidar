@@ -8,6 +8,8 @@ import '../../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import 'maplibre-gl-layer-control/style.css';
 
+let hotMap: Map | null = null;
+
 /**
  * Main App component demonstrating the React integration
  */
@@ -46,6 +48,7 @@ function App() {
 
     // Add fullscreen control
     mapInstance.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    hotMap = mapInstance;
 
     mapInstance.on('load', () => {
       // Add Google Satellite basemap
@@ -80,6 +83,9 @@ function App() {
         mapInstance.removeControl(layerControlRef.current);
       }
       mapInstance.remove();
+      if (hotMap === mapInstance) {
+        hotMap = null;
+      }
     };
   }, []);
 
@@ -270,3 +276,10 @@ const labelStyle: React.CSSProperties = {
 // Mount the app
 const root = createRoot(document.getElementById('root')!);
 root.render(<App />);
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    hotMap?.remove();
+    hotMap = null;
+  });
+}

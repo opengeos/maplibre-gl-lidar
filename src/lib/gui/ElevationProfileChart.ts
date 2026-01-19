@@ -105,10 +105,21 @@ export class ElevationProfileChart {
    * @param height - New height
    */
   resize(width: number, height: number): void {
-    this._options.width = width;
-    this._options.height = height;
-    this._canvas.width = width;
-    this._canvas.height = height;
+    // Ensure valid dimensions
+    const safeWidth = Math.max(100, Math.round(width));
+    const safeHeight = Math.max(80, Math.round(height));
+
+    this._options.width = safeWidth;
+    this._options.height = safeHeight;
+    this._canvas.width = safeWidth;
+    this._canvas.height = safeHeight;
+
+    // Re-acquire context after resize (some browsers need this)
+    const ctx = this._canvas.getContext('2d');
+    if (ctx) {
+      this._ctx = ctx;
+    }
+
     this._draw();
   }
 
@@ -282,7 +293,8 @@ export class ElevationProfileChart {
     }
 
     // X axis title
-    ctx.fillText('Distance (m)', width / 2, height - 5);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Distance (m)', width / 2, height - 6);
 
     // Y axis labels
     ctx.textAlign = 'right';

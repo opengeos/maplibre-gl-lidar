@@ -189,3 +189,9 @@ map.on('load', () => {
   // console.log('Current colormap:', lidarControl.getColormap());
   // console.log('Current color range:', lidarControl.getColorRange());
 });
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    map.remove();
+  });
+}

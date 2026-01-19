@@ -189,3 +189,12 @@ if (initialUrl) {
   urlInput.value = initialUrl;
   loadPointCloud(initialUrl);
 }
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    map?.remove();
+    map = null;
+    lidarControl = null;
+    layerControl = null;
+  });
+}

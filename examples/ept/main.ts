@@ -66,3 +66,9 @@ map.on('load', () => {
     console.error('Failed to load EPT:', event.error);
   });
 });
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    map.remove();
+  });
+}
