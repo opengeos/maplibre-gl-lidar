@@ -138,16 +138,17 @@ export class MetadataPanel {
           value: `${meta.copc.creationDate.year}, Day ${meta.copc.creationDate.dayOfYear}`
         });
       }
-      if (meta.copc.copcInfo) {
-        rows.push({ label: 'COPC Spacing', value: meta.copc.copcInfo.spacing.toFixed(2) + ' m' });
+      if (meta.copc.copcInfo?.pointSpacing !== undefined && meta.copc.copcInfo.pointSpacing > 0) {
+        rows.push({ label: 'Point Spacing (est.)', value: '~' + meta.copc.copcInfo.pointSpacing.toFixed(2) + ' m' });
       }
     }
 
     if (meta.type === 'ept' && meta.ept) {
       rows.push({ label: 'EPT Version', value: meta.ept.version });
       rows.push({ label: 'Data Type', value: meta.ept.dataType });
-      rows.push({ label: 'Hierarchy Type', value: meta.ept.hierarchyType });
-      rows.push({ label: 'Span', value: String(meta.ept.span) });
+      if (meta.ept.pointSpacing !== undefined && meta.ept.pointSpacing > 0) {
+        rows.push({ label: 'Point Spacing (est.)', value: '~' + meta.ept.pointSpacing.toFixed(2) + ' m' });
+      }
     }
 
     for (const row of rows) {
