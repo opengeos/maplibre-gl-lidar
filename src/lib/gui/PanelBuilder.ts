@@ -30,6 +30,8 @@ export interface PanelBuilderCallbacks {
   onClassificationToggle: (classificationCode: number, visible: boolean) => void;
   onClassificationShowAll: () => void;
   onClassificationHideAll: () => void;
+  onShowMetadata?: (id: string) => void;
+  onCrossSectionPanel?: () => HTMLElement | null;
 }
 
 /**
@@ -95,6 +97,12 @@ export class PanelBuilder {
 
     // Point clouds list
     content.appendChild(this._buildPointCloudsList());
+
+    // Cross-section panel (if callback provided)
+    const crossSectionPanel = this._buildCrossSectionSection();
+    if (crossSectionPanel) {
+      content.appendChild(crossSectionPanel);
+    }
 
     // Loading indicator
     content.appendChild(this._buildLoadingIndicator());
@@ -904,6 +912,20 @@ export class PanelBuilder {
     const actions = document.createElement('div');
     actions.className = 'lidar-pointcloud-actions';
 
+    // Info button
+    if (this._callbacks.onShowMetadata) {
+      const infoBtn = document.createElement('button');
+      infoBtn.type = 'button';
+      infoBtn.className = 'lidar-pointcloud-action info';
+      infoBtn.textContent = 'Info';
+      infoBtn.title = 'Show metadata';
+      infoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._callbacks.onShowMetadata!(pc.id);
+      });
+      actions.appendChild(infoBtn);
+    }
+
     const zoomBtn = document.createElement('button');
     zoomBtn.type = 'button';
     zoomBtn.className = 'lidar-pointcloud-action';
@@ -957,5 +979,46 @@ export class PanelBuilder {
     error.style.display = 'none';
     this._errorMessage = error;
     return error;
+  }
+
+  /**
+   * Builds the cross-section section if callback is provided.
+   *
+   * @returns Cross-section section or null if not available
+   */
+  private _buildCrossSectionSection(): HTMLElement | null {
+    if (!this._callbacks.onCrossSectionPanel) return null;
+
+    const panel = this._callbacks.onCrossSectionPanel();
+    if (!panel) return null;
+
+    const section = document.createElement('div');
+    section.className = 'lidar-control-section lidar-crosssection-section';
+
+    const header = document.createElement('div');
+    header.className = 'lidar-control-section-header lidar-section-collapsible';
+    header.innerHTML = '<span class="lidar-section-toggle">▶</span> Cross-Section';
+    header.style.cursor = 'pointer';
+
+    const body = document.createElement('div');
+    body.className = 'lidar-section-body';
+    body.style.display = 'none';
+    body.appendChild(panel);
+
+    header.addEventListener('click', () => {
+      const toggle = header.querySelector('.lidar-section-toggle');
+      if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (toggle) toggle.textContent = '▼';
+      } else {
+        body.style.display = 'none';
+        if (toggle) toggle.textContent = '▶';
+      }
+    });
+
+    section.appendChild(header);
+    section.appendChild(body);
+
+    return section;
   }
 }

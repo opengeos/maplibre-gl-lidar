@@ -10,6 +10,9 @@ import type {
   CopcLoadingMode,
   ColormapName,
   ColorRangeConfig,
+  PointCloudFullMetadata,
+  ElevationProfile,
+  CrossSectionLine,
 } from './types';
 import type { PickedPointInfo } from '../layers/types';
 import type { StreamingLoaderOptions, ViewportInfo, StreamingProgressEvent } from '../loaders/streaming-types';
@@ -20,6 +23,10 @@ import { EptStreamingLoader } from '../loaders/EptStreamingLoader';
 import { PointCloudManager } from '../layers/PointCloudManager';
 import { ViewportManager } from './ViewportManager';
 import { PanelBuilder } from '../gui/PanelBuilder';
+import { MetadataPanel } from '../gui/MetadataPanel';
+import { CrossSectionPanel } from '../gui/CrossSectionPanel';
+import { CrossSectionTool } from '../tools/CrossSectionTool';
+import { ElevationProfileExtractor } from '../tools/ElevationProfileExtractor';
 import { generateId, getFilename, computePercentileBounds } from '../utils/helpers';
 import { getAvailableClassifications } from '../colorizers/ColorScheme';
 
@@ -105,6 +112,13 @@ export class LidarControl implements IControl {
   private _viewportManagers: Map<string, ViewportManager> = new Map();
   private _eptViewportRequestIds: Map<string, number> = new Map();
   private _eptLastViewport: Map<string, ViewportInfo> = new Map();
+
+  // Metadata and cross-section components
+  private _metadataPanel?: MetadataPanel;
+  private _fullMetadata: Map<string, PointCloudFullMetadata> = new Map();
+  private _crossSectionTool?: CrossSectionTool;
+  private _crossSectionPanel?: CrossSectionPanel;
+  private _currentProfile: ElevationProfile | null = null;
 
   /**
    * Creates a new LidarControl instance.
@@ -1995,6 +2009,8 @@ export class LidarControl implements IControl {
         onClassificationShowAll: () => this._showAllClassifications(),
         onClassificationHideAll: () => this._hideAllClassifications(),
         onTerrainChange: (enabled) => this.setTerrain(enabled),
+        onShowMetadata: (id) => this.showMetadataPanel(id),
+        onCrossSectionPanel: () => this.getCrossSectionPanel().render(),
       },
       this._state
     );
@@ -2301,6 +2317,12 @@ export class LidarControl implements IControl {
   private _setupEventListeners(): void {
     // Click outside to close (check both container and panel since they're now separate)
     this._clickOutsideHandler = (e: MouseEvent) => {
+      // Don't collapse if cross-section tool is active or has a line drawn
+      // (the second click to finish drawing should not collapse the panel)
+      if (this._crossSectionTool?.isEnabled() || this._crossSectionTool?.getLine()) {
+        return;
+      }
+
       const target = e.target as Node;
       if (
         this._container &&
@@ -2401,5 +2423,251 @@ export class LidarControl implements IControl {
         this._panel.style.right = `${buttonRight}px`;
         break;
     }
+  }
+
+  // ==================== Metadata Viewer API ====================
+
+  /**
+   * Gets the full metadata for a point cloud.
+   *
+   * @param id - Point cloud ID. If not provided, returns metadata for the active point cloud.
+   * @returns Full metadata or undefined if not available
+   */
+  getFullMetadata(id?: string): PointCloudFullMetadata | undefined {
+    const targetId = id ?? this._state.activePointCloudId;
+    if (!targetId) return undefined;
+    return this._fullMetadata.get(targetId);
+  }
+
+  /**
+   * Shows the metadata panel for a point cloud.
+   *
+   * @param id - Point cloud ID. If not provided, shows metadata for the active point cloud.
+   */
+  showMetadataPanel(id?: string): void {
+    const targetId = id ?? this._state.activePointCloudId;
+    if (!targetId) return;
+
+    // Build metadata if not cached
+    let metadata = this._fullMetadata.get(targetId);
+    if (!metadata) {
+      metadata = this._buildFullMetadata(targetId);
+      if (metadata) {
+        this._fullMetadata.set(targetId, metadata);
+      }
+    }
+
+    if (!metadata) return;
+
+    // Create panel if needed
+    if (!this._metadataPanel) {
+      this._metadataPanel = new MetadataPanel({
+        onClose: () => {
+          // Panel handles its own cleanup
+        },
+      });
+    }
+
+    this._metadataPanel.show(metadata);
+  }
+
+  /**
+   * Hides the metadata panel.
+   */
+  hideMetadataPanel(): void {
+    this._metadataPanel?.hide();
+  }
+
+  /**
+   * Builds full metadata for a point cloud.
+   *
+   * @param id - Point cloud ID
+   * @returns Full metadata or undefined
+   */
+  private _buildFullMetadata(id: string): PointCloudFullMetadata | undefined {
+    const basic = this._state.pointClouds.find(pc => pc.id === id);
+    if (!basic) return undefined;
+
+    // Check if this is a COPC streaming dataset
+    const copcLoader = this._streamingLoaders.get(id);
+    if (copcLoader) {
+      const copcMeta = copcLoader.getCopcMetadata();
+      return {
+        type: 'copc',
+        copc: copcMeta,
+        basic: { ...basic, wkt: copcLoader.getWkt() ?? basic.wkt },
+      };
+    }
+
+    // Check if this is an EPT streaming dataset
+    const eptLoader = this._eptStreamingLoaders.get(id);
+    if (eptLoader) {
+      const eptMeta = eptLoader.getExtendedMetadata();
+      return {
+        type: 'ept',
+        ept: eptMeta,
+        basic,
+      };
+    }
+
+    // Default to LAS type for non-streaming datasets
+    return {
+      type: 'las',
+      basic,
+    };
+  }
+
+  // ==================== Cross-Section API ====================
+
+  /**
+   * Enables cross-section drawing mode.
+   */
+  enableCrossSection(): void {
+    if (!this._map) return;
+
+    // Initialize cross-section tool if needed
+    if (!this._crossSectionTool && this._deckOverlay) {
+      this._crossSectionTool = new CrossSectionTool(this._map, this._deckOverlay);
+      this._crossSectionTool.setOnLineChange((line) => {
+        this._handleCrossSectionLineChange(line);
+      });
+    }
+
+    this._crossSectionTool?.enable();
+    this._crossSectionPanel?.setDrawing(true);
+  }
+
+  /**
+   * Disables cross-section drawing mode.
+   */
+  disableCrossSection(): void {
+    this._crossSectionTool?.disable();
+    this._crossSectionPanel?.setDrawing(false);
+  }
+
+  /**
+   * Checks if cross-section mode is enabled.
+   *
+   * @returns True if enabled
+   */
+  isCrossSectionEnabled(): boolean {
+    return this._crossSectionTool?.isEnabled() ?? false;
+  }
+
+  /**
+   * Gets the current cross-section elevation profile.
+   *
+   * @returns Elevation profile or null if not available
+   */
+  getCrossSectionProfile(): ElevationProfile | null {
+    return this._currentProfile;
+  }
+
+  /**
+   * Sets the cross-section buffer distance.
+   *
+   * @param meters - Buffer distance in meters
+   */
+  setCrossSectionBufferDistance(meters: number): void {
+    this._crossSectionTool?.setBufferDistance(meters);
+    this._crossSectionPanel?.setBufferDistance(meters);
+    // Re-extract profile if line exists
+    const line = this._crossSectionTool?.getLine();
+    if (line) {
+      this._extractElevationProfile(line);
+    }
+  }
+
+  /**
+   * Gets the current cross-section buffer distance.
+   *
+   * @returns Buffer distance in meters
+   */
+  getCrossSectionBufferDistance(): number {
+    return this._crossSectionTool?.getBufferDistance() ?? 10;
+  }
+
+  /**
+   * Clears the current cross-section.
+   */
+  clearCrossSection(): void {
+    this._crossSectionTool?.clearLine();
+    this._currentProfile = null;
+    this._crossSectionPanel?.setProfile(null);
+  }
+
+  /**
+   * Gets the current cross-section line.
+   *
+   * @returns Cross-section line or null
+   */
+  getCrossSectionLine(): CrossSectionLine | null {
+    return this._crossSectionTool?.getLine() ?? null;
+  }
+
+  /**
+   * Handles cross-section line changes.
+   *
+   * @param line - New line or null if cleared
+   */
+  private _handleCrossSectionLineChange(line: CrossSectionLine | null): void {
+    if (line) {
+      this._extractElevationProfile(line);
+      // Disable drawing mode after line is complete
+      this._crossSectionTool?.disable();
+      this._crossSectionPanel?.setDrawing(false);
+    } else {
+      this._currentProfile = null;
+      this._crossSectionPanel?.setProfile(null);
+    }
+  }
+
+  /**
+   * Extracts elevation profile for the current cross-section line.
+   *
+   * @param line - Cross-section line
+   */
+  private _extractElevationProfile(line: CrossSectionLine): void {
+    // Get point cloud data from the manager
+    const pointCloudData = this._pointCloudManager?.getMergedPointCloudData();
+    if (!pointCloudData || pointCloudData.pointCount === 0) {
+      this._currentProfile = null;
+      this._crossSectionPanel?.setProfile(null);
+      return;
+    }
+
+    // Extract profile
+    this._currentProfile = ElevationProfileExtractor.extract(
+      line,
+      pointCloudData,
+      pointCloudData.coordinateOrigin as [number, number, number]
+    );
+
+    this._crossSectionPanel?.setProfile(this._currentProfile);
+  }
+
+  /**
+   * Gets the cross-section panel for adding to the UI.
+   * Creates the panel if it doesn't exist.
+   *
+   * @returns CrossSectionPanel instance
+   */
+  getCrossSectionPanel(): CrossSectionPanel {
+    if (!this._crossSectionPanel) {
+      this._crossSectionPanel = new CrossSectionPanel({
+        onDrawToggle: (enabled) => {
+          if (enabled) {
+            this.enableCrossSection();
+          } else {
+            this.disableCrossSection();
+          }
+        },
+        onClear: () => this.clearCrossSection(),
+        onBufferDistanceChange: (meters) => this.setCrossSectionBufferDistance(meters),
+      }, {
+        colormap: this._state.colormap,
+      });
+    }
+    return this._crossSectionPanel;
   }
 }

@@ -1022,6 +1022,78 @@ export class CopcStreamingLoader {
   }
 
   /**
+   * Gets the full COPC metadata for the loaded file.
+   *
+   * @returns COPC metadata or undefined if not initialized
+   */
+  getCopcMetadata(): import('../core/types').CopcMetadata | undefined {
+    if (!this._copc) return undefined;
+
+    const { header, info } = this._copc;
+
+    // Extract dimension info
+    const dimensions: import('../core/types').DimensionInfo[] = [];
+    if (header.pointDataRecordFormat !== undefined) {
+      // Standard LAS dimensions based on point data record format
+      const standardDims = ['X', 'Y', 'Z', 'Intensity', 'ReturnNumber', 'NumberOfReturns',
+                           'ScanDirectionFlag', 'EdgeOfFlightLine', 'Classification',
+                           'ScanAngleRank', 'UserData', 'PointSourceId'];
+      for (const dimName of standardDims) {
+        dimensions.push({
+          name: dimName,
+          type: dimName === 'X' || dimName === 'Y' || dimName === 'Z' ? 'float' :
+                dimName === 'Intensity' ? 'uint16' : 'uint8',
+          size: dimName === 'X' || dimName === 'Y' || dimName === 'Z' ? 8 :
+                dimName === 'Intensity' ? 2 : 1,
+          scale: dimName === 'X' ? header.scale[0] :
+                 dimName === 'Y' ? header.scale[1] :
+                 dimName === 'Z' ? header.scale[2] : undefined,
+          offset: dimName === 'X' ? header.offset[0] :
+                  dimName === 'Y' ? header.offset[1] :
+                  dimName === 'Z' ? header.offset[2] : undefined,
+        });
+      }
+      // Add RGB if available
+      const colorFormats = [2, 3, 5, 7, 8, 10];
+      if (colorFormats.includes(header.pointDataRecordFormat)) {
+        dimensions.push({ name: 'Red', type: 'uint16', size: 2 });
+        dimensions.push({ name: 'Green', type: 'uint16', size: 2 });
+        dimensions.push({ name: 'Blue', type: 'uint16', size: 2 });
+      }
+    }
+
+    return {
+      lasVersion: `${header.majorVersion}.${header.minorVersion}`,
+      pointDataRecordFormat: header.pointDataRecordFormat,
+      generatingSoftware: header.generatingSoftware || 'Unknown',
+      creationDate: header.fileCreationYear ? {
+        year: header.fileCreationYear,
+        dayOfYear: header.fileCreationDayOfYear || 1,
+      } : undefined,
+      scale: header.scale as [number, number, number],
+      offset: header.offset as [number, number, number],
+      nativeBounds: {
+        min: header.min as [number, number, number],
+        max: header.max as [number, number, number],
+      },
+      copcInfo: {
+        spacing: info.spacing,
+        rootHierarchyOffset: info.rootHierarchyPage?.pageOffset || 0,
+      },
+      dimensions,
+    };
+  }
+
+  /**
+   * Gets the WKT coordinate reference system string.
+   *
+   * @returns WKT string or undefined if not available
+   */
+  getWkt(): string | undefined {
+    return this._copc?.wkt;
+  }
+
+  /**
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {

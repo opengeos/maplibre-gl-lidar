@@ -386,3 +386,131 @@ export interface LidarControlReactProps extends LidarControlOptions {
    */
   onControlReady?: (control: import('./LidarControl').LidarControl) => void;
 }
+
+// ==================== Metadata Types ====================
+
+/**
+ * Dimension information for point cloud attributes
+ */
+export interface DimensionInfo {
+  /** Dimension name */
+  name: string;
+  /** Data type (e.g., 'float', 'unsigned', 'signed') */
+  type: string;
+  /** Size in bytes */
+  size: number;
+  /** Scale factor (if applicable) */
+  scale?: number;
+  /** Offset value (if applicable) */
+  offset?: number;
+}
+
+/**
+ * Extended metadata for COPC files
+ */
+export interface CopcMetadata {
+  /** LAS version string (e.g., "1.4") */
+  lasVersion: string;
+  /** Point data record format (0-10) */
+  pointDataRecordFormat: number;
+  /** Generating software name */
+  generatingSoftware: string;
+  /** Creation date */
+  creationDate?: { year: number; dayOfYear: number };
+  /** Scale factors [x, y, z] */
+  scale: [number, number, number];
+  /** Offset values [x, y, z] */
+  offset: [number, number, number];
+  /** Native bounds in source CRS */
+  nativeBounds: { min: [number, number, number]; max: [number, number, number] };
+  /** COPC-specific info */
+  copcInfo?: { spacing: number; rootHierarchyOffset: number };
+  /** Available dimensions */
+  dimensions: DimensionInfo[];
+}
+
+/**
+ * Extended metadata for EPT datasets
+ */
+export interface EptExtendedMetadata {
+  /** EPT format version */
+  version: string;
+  /** Data encoding type (e.g., 'laszip', 'binary') */
+  dataType: string;
+  /** Hierarchy type (e.g., 'json') */
+  hierarchyType: string;
+  /** Voxel grid dimension per axis */
+  span: number;
+  /** Native bounds [minX, minY, minZ, maxX, maxY, maxZ] */
+  nativeBounds: number[];
+  /** Spatial reference system */
+  srs?: { authority?: string; horizontal?: string; vertical?: string; wkt?: string };
+  /** Available dimensions */
+  dimensions: DimensionInfo[];
+}
+
+/**
+ * Full metadata container for all point cloud types
+ */
+export interface PointCloudFullMetadata {
+  /** Source type */
+  type: 'copc' | 'ept' | 'las';
+  /** COPC-specific metadata (if type is 'copc') */
+  copc?: CopcMetadata;
+  /** EPT-specific metadata (if type is 'ept') */
+  ept?: EptExtendedMetadata;
+  /** Basic point cloud info */
+  basic: PointCloudInfo;
+}
+
+// ==================== Cross-Section Types ====================
+
+/**
+ * Cross-section line definition
+ */
+export interface CrossSectionLine {
+  /** Start point [longitude, latitude] */
+  start: [number, number];
+  /** End point [longitude, latitude] */
+  end: [number, number];
+  /** Buffer distance in meters */
+  bufferDistance: number;
+}
+
+/**
+ * Profile point extracted from cross-section
+ */
+export interface ProfilePoint {
+  /** Distance along the line from start (meters) */
+  distance: number;
+  /** Elevation value (meters) */
+  elevation: number;
+  /** Perpendicular distance from line (meters) */
+  offsetFromLine: number;
+  /** Longitude */
+  longitude: number;
+  /** Latitude */
+  latitude: number;
+  /** Intensity value (0-1, optional) */
+  intensity?: number;
+  /** Classification code (optional) */
+  classification?: number;
+}
+
+/**
+ * Elevation profile data
+ */
+export interface ElevationProfile {
+  /** The cross-section line */
+  line: CrossSectionLine;
+  /** Extracted points sorted by distance */
+  points: ProfilePoint[];
+  /** Profile statistics */
+  stats: {
+    minElevation: number;
+    maxElevation: number;
+    meanElevation: number;
+    totalDistance: number;
+    pointCount: number;
+  };
+}

@@ -12,6 +12,14 @@ export { PointCloudManager } from './lib/layers/PointCloudManager';
 export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
 export { COLORMAPS, COLORMAP_NAMES, COLORMAP_LABELS, getColormap } from './lib/colorizers/Colormaps';
 
+// Tools exports
+export { CrossSectionTool, ElevationProfileExtractor } from './lib/tools';
+
+// GUI exports
+export { MetadataPanel } from './lib/gui/MetadataPanel';
+export { CrossSectionPanel } from './lib/gui/CrossSectionPanel';
+export { ElevationProfileChart } from './lib/gui/ElevationProfileChart';
+
 // Layer control adapter
 export { LidarLayerAdapter } from './lib/adapters';
 
@@ -30,6 +38,15 @@ export type {
   CopcLoadingMode,
   ColormapName,
   ColorRangeConfig,
+  // Metadata types
+  DimensionInfo,
+  CopcMetadata,
+  EptExtendedMetadata,
+  PointCloudFullMetadata,
+  // Cross-section types
+  CrossSectionLine,
+  ProfilePoint,
+  ElevationProfile,
 } from './lib/core/types';
 
 export type {

@@ -788,3 +788,371 @@
   margin: 0;
   cursor: pointer;
 }
+
+/* Info button for point cloud items */
+.lidar-control-panel .lidar-pointcloud-action.info {
+  background: #e3f2fd;
+  color: #1565c0;
+  border-color: #90caf9;
+}
+
+.lidar-control-panel .lidar-pointcloud-action.info:hover {
+  background: #1565c0;
+  color: #fff;
+}
+
+/* ==================== Metadata Panel ==================== */
+.lidar-metadata-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+}
+
+.lidar-metadata-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: hidden;
+  z-index: 10001;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+}
+
+.lidar-metadata-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f8f9fa;
+}
+
+.lidar-metadata-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.lidar-metadata-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.lidar-metadata-close:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.lidar-metadata-content {
+  padding: 16px 20px;
+  max-height: calc(80vh - 65px);
+  overflow-y: auto;
+}
+
+.lidar-metadata-section {
+  margin-bottom: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.lidar-metadata-section:last-child {
+  margin-bottom: 0;
+}
+
+.lidar-metadata-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8f9fa;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  font-size: 12px;
+  color: #555;
+}
+
+.lidar-metadata-section-header:hover {
+  background: #f0f0f0;
+}
+
+.lidar-metadata-section-toggle {
+  font-size: 10px;
+  color: #888;
+}
+
+.lidar-metadata-section-title {
+  flex: 1;
+}
+
+.lidar-metadata-section-body {
+  padding: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.lidar-metadata-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.lidar-metadata-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.lidar-metadata-value {
+  color: #333;
+  text-align: right;
+  max-width: 60%;
+  word-break: break-all;
+}
+
+.lidar-metadata-subheader {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 12px 0 6px 0;
+  padding-top: 8px;
+  border-top: 1px dashed #e0e0e0;
+}
+
+.lidar-metadata-subheader:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.lidar-metadata-wkt {
+  margin-top: 8px;
+}
+
+.lidar-metadata-copy-btn {
+  display: block;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #159895;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.lidar-metadata-copy-btn:hover {
+  background: #128784;
+}
+
+.lidar-metadata-code {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 10px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 10px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+}
+
+.lidar-metadata-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.lidar-metadata-table th,
+.lidar-metadata-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.lidar-metadata-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #555;
+}
+
+.lidar-metadata-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==================== Cross-Section Panel ==================== */
+.lidar-crosssection-section {
+  margin-top: 8px;
+}
+
+.lidar-section-collapsible {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lidar-section-toggle {
+  font-size: 10px;
+  color: #888;
+  width: 12px;
+}
+
+.lidar-section-body {
+  padding: 8px 0;
+}
+
+.lidar-crosssection-panel {
+  padding: 8px 0;
+}
+
+.lidar-crosssection-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8px;
+  display: none; /* Hide since section header already shows title */
+}
+
+.lidar-crosssection-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.lidar-crosssection-draw,
+.lidar-crosssection-clear {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 11px;
+}
+
+.lidar-crosssection-draw.active {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
+}
+
+.lidar-crosssection-chart {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px 4px 0 0;
+}
+
+.lidar-profile-chart-container {
+  position: relative;
+  background: #fff;
+}
+
+.lidar-profile-chart {
+  display: block;
+}
+
+.lidar-profile-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.lidar-crosssection-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.lidar-crosssection-stat {
+  display: flex;
+  justify-content: space-between;
+}
+
+.lidar-crosssection-stat-label {
+  color: #666;
+}
+
+.lidar-crosssection-stat-value {
+  font-weight: 500;
+  color: #333;
+}
+
+/* Chart wrapper and resize handle */
+.lidar-crosssection-chart-wrapper {
+  position: relative;
+  margin: 10px 0;
+}
+
+.lidar-chart-resize-handle {
+  height: 12px;
+  cursor: ns-resize;
+  background: #e8e8e8;
+  border: 1px solid #d0d0d0;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lidar-chart-resize-handle::after {
+  content: '';
+  width: 30px;
+  height: 4px;
+  background: #bbb;
+  border-radius: 2px;
+}
+
+.lidar-chart-resize-handle:hover {
+  background: #d8d8d8;
+}
+
+.lidar-chart-resize-handle:hover::after {
+  background: #999;
+}
+
+.lidar-chart-resize-handle:active {
+  background: #159895;
+}
+
+.lidar-chart-resize-handle:active::after {
+  background: #fff;
+}
+
+/* Download button styling */
+.lidar-crosssection-download {
+  min-width: 40px;
+  flex: 0 0 auto;
+}

@@ -106,10 +106,21 @@ export class DeckOverlay {
 
   /**
    * Updates the overlay with current layers.
+   * Layers are sorted so that overlay layers (like cross-section) render on top.
    */
   private _updateOverlay(): void {
+    // Sort layers: point cloud layers first, overlay layers (cross-section) last
+    const sortedLayers = Array.from(this._layers.entries()).sort(([idA], [idB]) => {
+      // Cross-section layer should render last (on top)
+      const isOverlayA = idA.includes('cross-section');
+      const isOverlayB = idB.includes('cross-section');
+      if (isOverlayA && !isOverlayB) return 1;
+      if (!isOverlayA && isOverlayB) return -1;
+      return 0;
+    }).map(([, layer]) => layer);
+
     this._overlay.setProps({
-      layers: Array.from(this._layers.values()),
+      layers: sortedLayers,
     });
     // Trigger a map repaint to ensure the deck overlay is rendered
     this._map.triggerRepaint();

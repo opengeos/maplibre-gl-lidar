@@ -418,6 +418,79 @@ export class PointCloudManager {
   }
 
   /**
+   * Gets merged point cloud data from all loaded point clouds.
+   * Used for cross-section profile extraction.
+   *
+   * @returns Merged point cloud data or null if no data loaded
+   */
+  getMergedPointCloudData(): PointCloudData | null {
+    if (this._pointClouds.size === 0) return null;
+
+    // If only one point cloud, return it directly
+    if (this._pointClouds.size === 1) {
+      const [first] = this._pointClouds.values();
+      return first.data;
+    }
+
+    // Merge multiple point clouds
+    // Calculate total point count
+    let totalPoints = 0;
+    for (const pc of this._pointClouds.values()) {
+      totalPoints += pc.data.pointCount;
+    }
+
+    if (totalPoints === 0) return null;
+
+    // Use the first point cloud's coordinate origin
+    const [firstPc] = this._pointClouds.values();
+    const originLng = firstPc.coordinateOrigin[0];
+    const originLat = firstPc.coordinateOrigin[1];
+
+    // Allocate merged arrays
+    const positions = new Float32Array(totalPoints * 3);
+    const intensities = new Float32Array(totalPoints);
+    const classifications = new Uint8Array(totalPoints);
+
+    let offset = 0;
+    for (const pc of this._pointClouds.values()) {
+      const data = pc.data;
+      const count = data.pointCount;
+
+      // Adjust positions to common origin
+      const dLng = pc.coordinateOrigin[0] - originLng;
+      const dLat = pc.coordinateOrigin[1] - originLat;
+
+      for (let i = 0; i < count; i++) {
+        positions[(offset + i) * 3] = data.positions[i * 3] + dLng;
+        positions[(offset + i) * 3 + 1] = data.positions[i * 3 + 1] + dLat;
+        positions[(offset + i) * 3 + 2] = data.positions[i * 3 + 2];
+      }
+
+      if (data.intensities) {
+        intensities.set(data.intensities.subarray(0, count), offset);
+      }
+
+      if (data.classifications) {
+        classifications.set(data.classifications.subarray(0, count), offset);
+      }
+
+      offset += count;
+    }
+
+    return {
+      positions,
+      coordinateOrigin: [originLng, originLat, 0],
+      intensities,
+      classifications,
+      pointCount: totalPoints,
+      bounds: firstPc.data.bounds,
+      hasRGB: firstPc.data.hasRGB,
+      hasIntensity: true,
+      hasClassification: true,
+    };
+  }
+
+  /**
    * Creates a deck.gl layer for a point cloud.
    * Chunks large point clouds into multiple layers to avoid WebGL buffer limits.
    * Uses coordinateOrigin + LNGLAT_OFFSETS to maintain Float32 precision.

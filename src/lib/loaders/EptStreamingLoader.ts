@@ -1417,6 +1417,46 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Gets the extended EPT metadata for the metadata panel.
+   *
+   * @returns Extended EPT metadata or undefined if not initialized
+   */
+  getExtendedMetadata(): import('../core/types').EptExtendedMetadata | undefined {
+    if (!this._metadata) return undefined;
+
+    const meta = this._metadata;
+
+    // Build dimension info from EPT schema
+    const dimensions: import('../core/types').DimensionInfo[] = [];
+    if (meta.schema) {
+      for (const dim of meta.schema) {
+        dimensions.push({
+          name: dim.name,
+          type: dim.type,
+          size: dim.size,
+          scale: dim.scale,
+          offset: dim.offset,
+        });
+      }
+    }
+
+    return {
+      version: meta.version || '1.0',
+      dataType: meta.dataType || 'laszip',
+      hierarchyType: meta.hierarchyType || 'json',
+      span: meta.span || 128,
+      nativeBounds: meta.bounds || [],
+      srs: meta.srs ? {
+        authority: meta.srs.authority,
+        horizontal: meta.srs.horizontal,
+        vertical: meta.srs.vertical,
+        wkt: meta.srs.wkt,
+      } : undefined,
+      dimensions,
+    };
+  }
+
+  /**
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
