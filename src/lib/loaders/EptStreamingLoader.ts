@@ -1440,6 +1440,18 @@ export class EptStreamingLoader {
       }
     }
 
+    // Calculate nominal point spacing from bbox area: sqrt(area / pointCount)
+    let pointSpacing: number | undefined;
+    if (meta.bounds && meta.bounds.length >= 6 && this._totalPointsInFile > 0) {
+      const width = meta.bounds[3] - meta.bounds[0];
+      const height = meta.bounds[4] - meta.bounds[1];
+      const area = width * height;
+      if (area > 0) {
+        const spacingInSourceUnits = Math.sqrt(area / this._totalPointsInFile);
+        pointSpacing = spacingInSourceUnits * this._verticalUnitFactor;
+      }
+    }
+
     return {
       version: meta.version || '1.0',
       dataType: meta.dataType || 'laszip',
@@ -1453,6 +1465,7 @@ export class EptStreamingLoader {
         wkt: meta.srs.wkt,
       } : undefined,
       dimensions,
+      pointSpacing,
     };
   }
 

@@ -424,7 +424,7 @@ export interface CopcMetadata {
   /** Native bounds in source CRS */
   nativeBounds: { min: [number, number, number]; max: [number, number, number] };
   /** COPC-specific info */
-  copcInfo?: { spacing: number; rootHierarchyOffset: number };
+  copcInfo?: { spacing: number; rootHierarchyOffset: number; pointSpacing?: number };
   /** Available dimensions */
   dimensions: DimensionInfo[];
 }
@@ -447,6 +447,8 @@ export interface EptExtendedMetadata {
   srs?: { authority?: string; horizontal?: string; vertical?: string; wkt?: string };
   /** Available dimensions */
   dimensions: DimensionInfo[];
+  /** Estimated point spacing in meters (from bbox area method) */
+  pointSpacing?: number;
 }
 
 /**

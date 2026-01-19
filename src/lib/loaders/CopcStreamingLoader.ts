@@ -1079,9 +1079,30 @@ export class CopcStreamingLoader {
       copcInfo: {
         spacing: info.spacing,
         rootHierarchyOffset: info.rootHierarchyPage?.pageOffset || 0,
+        pointSpacing: this._calculateNominalSpacing(header),
       },
       dimensions,
     };
+  }
+
+  /**
+   * Calculates the nominal point spacing from bounding box area.
+   * Uses formula: sqrt(area / pointCount) * unitFactor
+   *
+   * @param header - COPC header with bounds and point count
+   * @returns Estimated point spacing in meters
+   */
+  private _calculateNominalSpacing(header: { min: number[]; max: number[]; pointCount: number }): number {
+    const width = header.max[0] - header.min[0];
+    const height = header.max[1] - header.min[1];
+    const area = width * height;
+
+    if (area <= 0 || header.pointCount <= 0) {
+      return 0;
+    }
+
+    const spacingInSourceUnits = Math.sqrt(area / header.pointCount);
+    return spacingInSourceUnits * this._verticalUnitFactor;
   }
 
   /**
