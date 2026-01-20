@@ -1,6 +1,6 @@
 {
   "name": "maplibre-gl-lidar",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl",
   "type": "module",
   "main": "./dist/index.cjs",
