@@ -92,7 +92,7 @@
     "@loaders.gl/las": "^4.3.4",
     "@types/proj4": "^2.5.6",
     "copc": "^0.0.8",
-    "maplibre-gl-layer-control": "^0.9.0",
+    "maplibre-gl-layer-control": "^0.9.3",
     "proj4": "^2.20.2"
   },
   "devDependencies": {
