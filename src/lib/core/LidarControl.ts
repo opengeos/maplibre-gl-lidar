@@ -113,6 +113,9 @@ export class LidarControl implements IControl {
   private _eptViewportRequestIds: Map<string, number> = new Map();
   private _eptLastViewport: Map<string, ViewportInfo> = new Map();
 
+  // Track whether the user has explicitly set zOffset (to skip autoZOffset)
+  private _manualZOffset = false;
+
   // Metadata and cross-section components
   private _metadataPanel?: MetadataPanel;
   private _fullMetadata: Map<string, PointCloudFullMetadata> = new Map();
@@ -159,6 +162,11 @@ export class LidarControl implements IControl {
       terrainEnabled: this._options.terrainEnabled ?? false,
     };
     this._loader = new PointCloudLoader();
+
+    // If the user explicitly provided zOffset or zOffsetEnabled, treat as manual
+    if (options?.zOffset !== undefined || options?.zOffsetEnabled !== undefined) {
+      this._manualZOffset = true;
+    }
   }
 
   /**
@@ -459,7 +467,7 @@ export class LidarControl implements IControl {
       let zOffset: number | undefined;
       let zOffsetEnabled = this._state.zOffsetEnabled;
 
-      if (this._options.autoZOffset && data.positions && data.pointCount > 0) {
+      if (this._options.autoZOffset && !this._manualZOffset && data.positions && data.pointCount > 0) {
         // Extract Z values and compute 2nd percentile (same as used for elevation coloring)
         const zValues = new Float32Array(data.pointCount);
         for (let i = 0; i < data.pointCount; i++) {
@@ -472,6 +480,12 @@ export class LidarControl implements IControl {
         zOffsetEnabled = true;
         this._pointCloudManager?.setZOffset(zOffset);
         console.log(`Auto Z offset applied: zOffsetBase=${zOffsetBase.toFixed(1)}, zOffset=${zOffset.toFixed(1)}, enabled=${zOffsetEnabled}`);
+      } else if (this._manualZOffset) {
+        // User explicitly set zOffset — apply it now that the point cloud is loaded
+        this._pointCloudManager?.setZOffset(this._state.zOffset);
+        zOffset = this._state.zOffset;
+        zOffsetEnabled = this._state.zOffsetEnabled;
+        console.log(`Manual Z offset applied: zOffset=${zOffset}, enabled=${zOffsetEnabled}`);
       } else {
         console.log('Auto Z offset skipped - conditions not met');
       }
@@ -661,7 +675,7 @@ export class LidarControl implements IControl {
         this._pointCloudManager?.updatePointCloud(id, data);
 
         // Auto Z offset: use bounds.minZ from the COPC header (reliable source)
-        if (this._options.autoZOffset && !autoZOffsetApplied && data.bounds) {
+        if (this._options.autoZOffset && !this._manualZOffset && !autoZOffsetApplied && data.bounds) {
           // Use bounds.minZ as the ground level (from file header, always accurate)
           const zOffsetBase = data.bounds.minZ;
 
@@ -675,6 +689,9 @@ export class LidarControl implements IControl {
             zOffset,
             zOffsetEnabled: true,
           });
+          autoZOffsetApplied = true;
+        } else if (this._manualZOffset && !autoZOffsetApplied) {
+          this._pointCloudManager?.setZOffset(this._state.zOffset);
           autoZOffsetApplied = true;
         }
 
@@ -893,7 +910,7 @@ export class LidarControl implements IControl {
         this._pointCloudManager?.updatePointCloud(id, data);
 
         // Auto Z offset
-        if (this._options.autoZOffset && !autoZOffsetApplied && data.bounds) {
+        if (this._options.autoZOffset && !this._manualZOffset && !autoZOffsetApplied && data.bounds) {
           const zOffsetBase = data.bounds.minZ;
           const zOffset = -zOffsetBase;
           this._pointCloudManager?.setZOffset(zOffset);
@@ -903,6 +920,9 @@ export class LidarControl implements IControl {
             zOffset,
             zOffsetEnabled: true,
           });
+          autoZOffsetApplied = true;
+        } else if (this._manualZOffset && !autoZOffsetApplied) {
+          this._pointCloudManager?.setZOffset(this._state.zOffset);
           autoZOffsetApplied = true;
         }
 
@@ -1253,7 +1273,7 @@ export class LidarControl implements IControl {
       let zOffset: number | undefined;
       let zOffsetEnabled = this._state.zOffsetEnabled;
 
-      if (this._options.autoZOffset && data.positions && data.pointCount > 0) {
+      if (this._options.autoZOffset && !this._manualZOffset && data.positions && data.pointCount > 0) {
         const zValues = new Float32Array(data.pointCount);
         for (let i = 0; i < data.pointCount; i++) {
           zValues[i] = data.positions[i * 3 + 2] ?? 0;
@@ -1265,6 +1285,10 @@ export class LidarControl implements IControl {
         zOffsetEnabled = true;
         this._pointCloudManager?.setZOffset(zOffset);
         console.log(`Auto Z offset applied (download): ${zOffset.toFixed(1)}m (ground level: ${zOffsetBase.toFixed(1)}m)`);
+      } else if (this._manualZOffset) {
+        this._pointCloudManager?.setZOffset(this._state.zOffset);
+        zOffset = this._state.zOffset;
+        zOffsetEnabled = this._state.zOffsetEnabled;
       }
 
       this._panelBuilder?.updateLoadingProgress(100, 'Complete!');
@@ -1714,6 +1738,7 @@ export class LidarControl implements IControl {
    * @param offset - Z offset in meters
    */
   setZOffset(offset: number): void {
+    this._manualZOffset = true;
     this._state.zOffset = offset;
     this._pointCloudManager?.setZOffset(offset);
     this._emit('stylechange');
