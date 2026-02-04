@@ -154,6 +154,15 @@ export class LidarLayerAdapter implements CustomLayerAdapter {
   }
 
   /**
+   * Removes a layer from the map by unloading the point cloud.
+   *
+   * @param layerId - Point cloud ID to remove
+   */
+  removeLayer(layerId: string): void {
+    this._lidarControl.unloadPointCloud(layerId);
+  }
+
+  /**
    * Subscribes to layer changes (add/remove).
    *
    * @param callback - Function to call when layers are added or removed
