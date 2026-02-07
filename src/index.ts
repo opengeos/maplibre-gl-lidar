@@ -3,6 +3,7 @@ import './lib/styles/lidar-control.css';
 
 // Main entry point - Core exports
 export { LidarControl } from './lib/core/LidarControl';
+export { GaussianSplatControl } from './lib/core/GaussianSplatControl';
 export { DeckOverlay } from './lib/core/DeckOverlay';
 export { ViewportManager } from './lib/core/ViewportManager';
 export { PointCloudLoader } from './lib/loaders/PointCloudLoader';
@@ -22,6 +23,14 @@ export { ElevationProfileChart } from './lib/gui/ElevationProfileChart';
 
 // Layer control adapter
 export { LidarLayerAdapter } from './lib/adapters';
+
+// Gaussian splat types
+export type {
+  GaussianSplatControlOptions,
+  GaussianSplatControlState,
+  GaussianSplatEvent,
+  GaussianSplatEventHandler,
+} from './lib/core/GaussianSplatControl';
 
 // Type exports
 export type {
