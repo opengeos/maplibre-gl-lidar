@@ -119,7 +119,7 @@ const SPLAT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="1
 
 /**
  * A control for loading and displaying Gaussian Splat 3D scenes on a MapLibre map.
- * 
+ *
  * Supports .splat, .ply, .spz, .ksplat, and .sog file formats.
  * Uses THREE.js via maplibre-three-plugin for rendering.
  *
@@ -140,7 +140,7 @@ export class GaussianSplatControl implements IControl {
   private _options: Required<GaussianSplatControlOptions>;
   private _state: GaussianSplatControlState;
   private _eventHandlers: Map<GaussianSplatEvent, Set<GaussianSplatEventHandler>> = new Map();
-  
+
   // THREE.js / MapLibre bridge
   private _mapScene?: MTP.MapScene;
   private _splatLayers: Map<string, SplatLayerInfo> = new Map();
@@ -185,7 +185,7 @@ export class GaussianSplatControl implements IControl {
 
   onRemove(): void {
     this._removeAllSplats();
-    
+
     this._mapScene = undefined;
     this._map = undefined;
     this._container?.parentNode?.removeChild(this._container);
@@ -296,7 +296,7 @@ export class GaussianSplatControl implements IControl {
       // Create and load the splat mesh
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const splatMesh = new (SplatMesh as any)({ url });
-      
+
       // Wait for the mesh to load
       await new Promise<void>((resolve, reject) => {
         const checkLoaded = () => {
