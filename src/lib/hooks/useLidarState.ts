@@ -7,7 +7,7 @@ import type { LidarState, ColorScheme } from '../core/types';
 const DEFAULT_STATE: LidarState = {
   collapsed: true,
   panelWidth: 365,
-  panelMaxHeight: 600,
+  maxHeight: 500,
   pointClouds: [],
   activePointCloudId: null,
   pointSize: 2,

@@ -118,7 +118,7 @@ export interface LidarControlOptions {
    * When content exceeds this height, a vertical scrollbar appears.
    * @default 500
    */
-  panelMaxHeight?: number;
+  maxHeight?: number;
 
   /**
    * Custom CSS class name for the control container
@@ -264,7 +264,7 @@ export interface LidarControlOptions {
 export interface LidarState {
   collapsed: boolean;
   panelWidth: number;
-  panelMaxHeight: number;
+  maxHeight: number;
   pointClouds: PointCloudInfo[];
   activePointCloudId: string | null;
   pointSize: number;
