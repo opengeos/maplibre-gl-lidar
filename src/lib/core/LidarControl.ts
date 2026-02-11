@@ -2695,4 +2695,8 @@ export class LidarControl implements IControl {
     }
     return this._crossSectionPanel;
   }
+
+  getPanelElement(): HTMLElement | null {
+    return this._panel ?? null;
+  }
 }
