@@ -38,7 +38,7 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   position: 'top-right',
   title: 'LiDAR Viewer',
   panelWidth: 365,
-  panelMaxHeight: 600,
+  maxHeight: 500,
   className: '',
   pointSize: 2,
   opacity: 1.0,
@@ -139,7 +139,7 @@ export class LidarControl implements IControl {
     this._state = {
       collapsed: this._options.collapsed,
       panelWidth: this._options.panelWidth,
-      panelMaxHeight: this._options.panelMaxHeight,
+      maxHeight: this._options.maxHeight,
       pointClouds: [],
       activePointCloudId: null,
       pointSize: this._options.pointSize,

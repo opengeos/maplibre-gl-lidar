@@ -75,7 +75,7 @@ map.on('load', () => {
     },
     // copcLoadingMode: 'dynamic',  // Auto-detected for COPC URLs, use 'full' to force download
     // streamingPointBudget: 5_000_000  // Max points in memory for streaming mode
-    // panelMaxHeight: 600,
+    // maxHeight: 500,
   });
 
   // Create layer adapter for the layer control

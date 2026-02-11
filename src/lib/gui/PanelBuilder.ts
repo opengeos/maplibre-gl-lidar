@@ -84,8 +84,8 @@ export class PanelBuilder {
     const content = document.createElement('div');
     content.className = 'lidar-control-content';
     // Apply max height from state
-    if (this._state.panelMaxHeight) {
-      content.style.maxHeight = `${this._state.panelMaxHeight}px`;
+    if (this._state.maxHeight) {
+      content.style.maxHeight = `${this._state.maxHeight}px`;
     }
     this._contentElement = content;
 
@@ -122,8 +122,8 @@ export class PanelBuilder {
     this._state = state;
 
     // Update max height if changed
-    if (this._contentElement && state.panelMaxHeight) {
-      this._contentElement.style.maxHeight = `${state.panelMaxHeight}px`;
+    if (this._contentElement && state.maxHeight) {
+      this._contentElement.style.maxHeight = `${state.maxHeight}px`;
     }
 
     // Update loading state
