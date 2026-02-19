@@ -22,6 +22,7 @@ A MapLibre GL JS plugin for visualizing LiDAR point clouds using deck.gl.
 - Automatic coordinate transformation (projected CRS to WGS84)
 - Programmatic API for loading and styling
 - React integration with hooks
+- Vue integration with [@geoql/v-maplibre](https://github.com/geoql/v-maplibre)
 - deck.gl PointCloudLayer with optimized chunking for large datasets
 - TypeScript support
 
@@ -139,6 +140,97 @@ function App() {
   );
 }
 ```
+
+### Vue Usage
+
+The [`@geoql/v-maplibre`](https://github.com/geoql/v-maplibre) package provides a `VControlLidar` component that wraps maplibre-gl-lidar for Vue/Nuxt applications.
+
+```bash
+npm install @geoql/v-maplibre maplibre-gl-lidar
+```
+
+```vue
+<script setup lang="ts">
+import { VMap, VControlLidar } from "@geoql/v-maplibre";
+import "maplibre-gl-lidar/style.css";
+import "maplibre-gl/dist/maplibre-gl.css";
+
+const mapOptions = {
+  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  center: [-123.075, 44.05],
+  zoom: 14,
+  pitch: 60,
+  maxPitch: 85,
+};
+
+const lidarOptions = {
+  collapsed: false,
+  pointSize: 2,
+  colorScheme: "elevation",
+  pickable: true,
+  autoZoom: true,
+};
+
+const copcUrl =
+  "https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz";
+</script>
+
+<template>
+  <VMap :options="mapOptions" style="width: 100%; height: 100vh">
+    <VControlLidar
+      position="top-right"
+      :options="lidarOptions"
+      :default-url="copcUrl"
+      @load="(info) => console.log('Loaded:', info)"
+    />
+  </VMap>
+</template>
+```
+
+#### Props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `options` | `LidarControlOptions` | See defaults | Configuration options for the LiDAR control |
+| `position` | `'top-left' \| 'top-right' \| 'bottom-left' \| 'bottom-right'` | `'top-right'` | Position of the control on the map |
+| `defaultUrl` | `string` | — | URL of a point cloud file to auto-load on mount |
+
+#### Events
+
+All [LidarControl events](#events) are available as Vue events: `@load`, `@loadstart`, `@loaderror`, `@unload`, `@statechange`, `@stylechange`, `@collapse`, `@expand`, `@streamingstart`, `@streamingstop`, `@streamingprogress`, `@budgetreached`.
+
+#### Exposed Methods
+
+Access methods via template ref:
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { VControlLidar } from "@geoql/v-maplibre";
+
+const lidarRef = ref<InstanceType<typeof VControlLidar> | null>(null);
+
+// Load a point cloud programmatically
+const loadFile = async (url: string) => {
+  await lidarRef.value?.loadPointCloud(url);
+};
+
+// Classification control
+const showOnlyBuildings = () => {
+  lidarRef.value?.hideAllClassifications();
+  lidarRef.value?.setClassificationVisibility(6, true);
+};
+</script>
+
+<template>
+  <VControlLidar ref="lidarRef" :options="{ colorScheme: 'classification' }" />
+</template>
+```
+
+Available methods: `loadPointCloud`, `unloadPointCloud`, `flyToPointCloud`, `setPointSize`, `setColorScheme`, `setOpacity`, `setPickable`, `setUsePercentile`, `setElevationRange`, `clearElevationRange`, `setZOffset`, `setZOffsetEnabled`, `toggle`, `expand`, `collapse`, `getState`, `getPointClouds`, `stopStreaming`, `isStreaming`.
+
+**Vue examples:** [EPT Streaming](https://mapcn-vue.geoql.in/examples/lidar-ept) · [Classification Filter](https://mapcn-vue.geoql.in/examples/lidar-classification)
+**Full docs:** [@geoql/v-maplibre LidarControl](https://v-maplibre.geoql.in/controls/lidar)
 
 ## API Reference
 
@@ -498,6 +590,24 @@ console.log(`Loaded ${data.pointCount} points`);
 **Note:** LAS 1.2 and 1.4 are loaded using copc.js for optimal performance. LAS 1.0, 1.1, and 1.3 files automatically fall back to @loaders.gl/las.
 
 ## Framework Integration
+
+### Nuxt
+
+maplibre-gl-lidar works with Nuxt via [`@geoql/v-maplibre`](https://github.com/geoql/v-maplibre). The `VControlLidar` component handles dynamic imports internally, so no additional bundler configuration is needed. Wrap the map in `<ClientOnly>` for SSR compatibility:
+
+```vue
+<template>
+  <ClientOnly>
+    <VMap :options="mapOptions" style="height: 500px">
+      <VControlLidar
+        position="top-right"
+        :options="{ colorScheme: 'elevation', pickable: true }"
+        :default-url="copcUrl"
+      />
+    </VMap>
+  </ClientOnly>
+</template>
+```
 
 ### Next.js
 
