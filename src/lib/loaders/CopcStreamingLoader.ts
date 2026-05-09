@@ -266,6 +266,7 @@ export class CopcStreamingLoader {
   private _totalPointsInFile: number = 0;
   private _octreeCube: number[] = [];
   private _spacing: number = 0;
+  private _spacingInMeters: number = 0;
 
   // Extra dimensions detection
   private _availableDimensions: Set<string> = new Set();
@@ -422,6 +423,25 @@ export class CopcStreamingLoader {
       0,
     ];
 
+    // Convert spacing to meters. When the source CRS is geographic (lng/lat
+    // in degrees), info.spacing is in degrees and must be converted before it
+    // can be compared to screen ground resolution in meters. We detect a
+    // geographic source as one where no projection transformation was set up
+    // and the header bounds fall within valid lng/lat ranges.
+    const looksGeographic =
+      !this._needsTransform &&
+      Math.abs(header.min[0]) <= 180 &&
+      Math.abs(header.max[0]) <= 180 &&
+      Math.abs(header.min[1]) <= 90 &&
+      Math.abs(header.max[1]) <= 90;
+    if (looksGeographic) {
+      const centerLat = (this._bounds.minY + this._bounds.maxY) / 2;
+      const metersPerDegreeLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
+      this._spacingInMeters = this._spacing * Math.max(metersPerDegreeLng, 1);
+    } else {
+      this._spacingInMeters = this._spacing;
+    }
+
     // Pre-allocate buffers for point budget
     this._allocateBuffers();
 
@@ -431,7 +451,7 @@ export class CopcStreamingLoader {
       bounds: this._bounds,
       totalPoints: this._totalPointsInFile,
       hasRGB: this._hasColor,
-      spacing: this._spacing,
+      spacing: this._spacingInMeters,
     };
   }
 
@@ -449,10 +469,11 @@ export class CopcStreamingLoader {
   }
 
   /**
-   * Gets the octree spacing value (useful for ViewportManager).
+   * Gets the octree spacing value in meters (useful for ViewportManager).
+   * Always returned in meters even when the source CRS is geographic.
    */
   getSpacing(): number {
-    return this._spacing;
+    return this._spacingInMeters;
   }
 
   /**
