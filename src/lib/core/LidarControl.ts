@@ -28,6 +28,11 @@ import { CrossSectionPanel } from '../gui/CrossSectionPanel';
 import { CrossSectionTool } from '../tools/CrossSectionTool';
 import { ElevationProfileExtractor } from '../tools/ElevationProfileExtractor';
 import { generateId, getFilename, computePercentileBounds } from '../utils/helpers';
+import {
+  createLidarSharePayload,
+  createLidarShareUrl,
+  parseLidarSharePayloadFromUrl,
+} from '../utils/share-url';
 import { getAvailableClassifications } from '../colorizers/ColorScheme';
 
 /**
@@ -61,6 +66,8 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   streamingViewportDebounceMs: 150,
   terrainEnabled: false,
   terrainExaggeration: 1.0,
+  shareUrl: true,
+  restoreFromUrl: true,
 };
 
 /**
@@ -223,6 +230,12 @@ export class LidarControl implements IControl {
       this.setTerrain(true);
     }
 
+    if (this._options.restoreFromUrl) {
+      this.restoreFromUrl().catch((err) => {
+        console.warn('Failed to restore LiDAR state from URL:', err);
+      });
+    }
+
     return this._container;
   }
 
@@ -282,6 +295,93 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Creates a shareable URL that restores URL-loaded point clouds, map camera, and visualization state.
+   *
+   * @returns Shareable URL
+   */
+  getShareUrl(): string {
+    const currentUrl =
+      typeof window !== 'undefined' ? window.location.href : 'http://localhost/';
+    const payload = createLidarSharePayload(
+      this._state,
+      this._getShareMapState(),
+      currentUrl
+    );
+
+    return createLidarShareUrl(currentUrl, payload);
+  }
+
+  /**
+   * Restores point clouds, map camera, and visualization state from a share URL.
+   *
+   * @param url - URL to restore from. Defaults to the current browser URL.
+   * @returns Loaded point cloud info objects
+   */
+  async restoreFromUrl(url?: string): Promise<PointCloudInfo[]> {
+    const restoreUrl =
+      url ?? (typeof window !== 'undefined' ? window.location.href : undefined);
+    if (!restoreUrl) return [];
+
+    const payload = parseLidarSharePayloadFromUrl(restoreUrl);
+    if (!payload) return [];
+
+    const visualization = payload.visualization;
+    this.setPointSize(visualization.pointSize);
+    this.setOpacity(visualization.opacity);
+    this.setColorScheme(visualization.colorScheme);
+    this.setColormap(visualization.colormap);
+    this.setColorRange(visualization.colorRange);
+
+    if (visualization.elevationRange) {
+      this.setElevationRange(
+        visualization.elevationRange[0],
+        visualization.elevationRange[1]
+      );
+    } else {
+      this.clearElevationRange();
+    }
+
+    this.setPickable(visualization.pickable);
+    this.setZOffsetEnabled(visualization.zOffsetEnabled);
+    if (visualization.zOffsetEnabled) {
+      this.setZOffset(visualization.zOffset);
+    }
+    this.setTerrain(visualization.terrainEnabled);
+    this._panelBuilder?.updateState(this._state);
+
+    if (payload.map) {
+      this._applyShareMapState(payload.map);
+    }
+
+    const loadedPointClouds: PointCloudInfo[] = [];
+    const previousAutoZoom = this._options.autoZoom;
+    this._options.autoZoom = false;
+    try {
+      for (const source of payload.pointClouds) {
+        loadedPointClouds.push(await this.loadPointCloud(source));
+      }
+    } finally {
+      this._options.autoZoom = previousAutoZoom;
+    }
+
+    const hiddenClassifications = new Set(visualization.hiddenClassifications);
+    this._pointCloudManager?.setHiddenClassifications(hiddenClassifications);
+    this.setState({ hiddenClassifications });
+    this._emit('stylechange');
+
+    if (payload.map) {
+      this._applyShareMapState(payload.map);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => this._applyShareMapState(payload.map!));
+      }
+      globalThis.setTimeout(() => this._applyShareMapState(payload.map!), 250);
+      globalThis.setTimeout(() => this._applyShareMapState(payload.map!), 1250);
+    }
+
+    return loadedPointClouds;
+  }
+
+  /**
    * Updates the control state.
    *
    * @param newState - Partial state to merge with current state
@@ -289,6 +389,9 @@ export class LidarControl implements IControl {
   setState(newState: Partial<LidarState>): void {
     this._state = { ...this._state, ...newState };
     this._panelBuilder?.updateState(this._state);
+    if (!this._state.collapsed) {
+      this._updatePanelPosition();
+    }
     this._emit('statechange');
   }
 
@@ -1860,6 +1963,47 @@ export class LidarControl implements IControl {
   // ==================== Private Methods ====================
 
   /**
+   * Gets the current map camera state for share URLs.
+   */
+  private _getShareMapState():
+    | {
+        center: [number, number];
+        zoom: number;
+        bearing: number;
+        pitch: number;
+      }
+    | undefined {
+    if (!this._map) return undefined;
+
+    const center = this._map.getCenter();
+    return {
+      center: [center.lng, center.lat],
+      zoom: this._map.getZoom(),
+      bearing: this._map.getBearing(),
+      pitch: this._map.getPitch(),
+    };
+  }
+
+  /**
+   * Applies a shared camera state to the map.
+   */
+  private _applyShareMapState(mapState: {
+    center: [number, number];
+    zoom: number;
+    bearing: number;
+    pitch: number;
+  }): void {
+    if (!this._map) return;
+
+    this._map.jumpTo({
+      center: mapState.center,
+      zoom: mapState.zoom,
+      bearing: mapState.bearing,
+      pitch: mapState.pitch,
+    });
+  }
+
+  /**
    * Emits an event to all registered handlers.
    *
    * @param event - The event type to emit
@@ -2036,6 +2180,7 @@ export class LidarControl implements IControl {
         onTerrainChange: (enabled) => this.setTerrain(enabled),
         onShowMetadata: (id) => this.showMetadataPanel(id),
         onCrossSectionPanel: () => this.getCrossSectionPanel().render(),
+        onShareUrl: this._options.shareUrl ? () => this.getShareUrl() : undefined,
       },
       this._state
     );
@@ -2416,6 +2561,7 @@ export class LidarControl implements IControl {
     const buttonRight = mapRect.right - buttonRect.right;
 
     const panelGap = 5; // Gap between button and panel
+    let availableHeight = mapRect.height - panelGap * 2;
 
     // Reset all positioning
     this._panel.style.top = '';
@@ -2428,25 +2574,44 @@ export class LidarControl implements IControl {
         // Panel expands down and to the right
         this._panel.style.top = `${buttonTop + buttonRect.height + panelGap}px`;
         this._panel.style.left = `${buttonLeft}px`;
+        availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
         break;
 
       case 'top-right':
         // Panel expands down and to the left
         this._panel.style.top = `${buttonTop + buttonRect.height + panelGap}px`;
         this._panel.style.right = `${buttonRight}px`;
+        availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
         break;
 
       case 'bottom-left':
         // Panel expands up and to the right
         this._panel.style.bottom = `${buttonBottom + buttonRect.height + panelGap}px`;
         this._panel.style.left = `${buttonLeft}px`;
+        availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
         break;
 
       case 'bottom-right':
         // Panel expands up and to the left
         this._panel.style.bottom = `${buttonBottom + buttonRect.height + panelGap}px`;
         this._panel.style.right = `${buttonRight}px`;
+        availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
         break;
+    }
+
+    const panelMaxHeight = Math.max(220, availableHeight);
+    this._panel.style.maxHeight = `${panelMaxHeight}px`;
+
+    const header = this._panel.querySelector('.lidar-control-header') as HTMLElement | null;
+    const content = this._panel.querySelector('.lidar-control-content') as HTMLElement | null;
+    if (content) {
+      const headerHeight = header?.offsetHeight ?? 0;
+      const panelPadding = 16;
+      const contentMaxHeight = Math.max(
+        180,
+        Math.min(this._state.maxHeight, panelMaxHeight - headerHeight - panelPadding)
+      );
+      content.style.maxHeight = `${contentMaxHeight}px`;
     }
   }
 

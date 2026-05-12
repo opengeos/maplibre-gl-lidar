@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { LidarControl } from './LidarControl';
 import type { LidarControlReactProps } from './types';
+import { hasLidarShareParams } from '../utils/share-url';
 
 /**
  * React wrapper component for LidarControl.
@@ -85,7 +86,12 @@ export function LidarControlReact({
     }
 
     // Load default URL if provided
-    if (defaultUrl) {
+    const hasShareUrl =
+      typeof window !== 'undefined' &&
+      options.restoreFromUrl !== false &&
+      hasLidarShareParams(window.location.href);
+
+    if (defaultUrl && !hasShareUrl) {
       control.loadPointCloud(defaultUrl).catch((err) => {
         console.error('Failed to load default URL:', err);
       });
