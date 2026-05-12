@@ -234,6 +234,18 @@ export interface LidarControlOptions {
   terrainEnabled?: boolean;
 
   /**
+   * Whether to show a Share URL button in the panel
+   * @default true
+   */
+  shareUrl?: boolean;
+
+  /**
+   * Whether to restore LiDAR state from share URL query parameters on add
+   * @default true
+   */
+  restoreFromUrl?: boolean;
+
+  /**
    * Terrain exaggeration factor (1.0 = actual elevation)
    * @default 1.0
    */

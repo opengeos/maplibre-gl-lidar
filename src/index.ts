@@ -89,4 +89,18 @@ export {
   formatNumber,
   formatBytes,
   getFilename,
+  LIDAR_SHARE_PARAM,
+  LIDAR_SHARE_VERSION,
+  createLidarSharePayload,
+  encodeLidarSharePayload,
+  decodeLidarSharePayload,
+  createLidarShareUrl,
+  parseLidarSharePayloadFromUrl,
+  hasLidarShareParams,
+} from './lib/utils';
+
+export type {
+  LidarShareMapState,
+  LidarShareVisualization,
+  LidarSharePayload,
 } from './lib/utils';

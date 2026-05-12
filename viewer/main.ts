@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl';
-import { LidarControl, LidarLayerAdapter } from '../src/index';
+import { hasLidarShareParams, LidarControl, LidarLayerAdapter } from '../src/index';
 import { LayerControl } from 'maplibre-gl-layer-control';
 import '../src/index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -11,6 +11,9 @@ const urlForm = document.getElementById('url-form') as HTMLFormElement;
 const urlInput = document.getElementById('url-input') as HTMLInputElement;
 const loadBtn = document.getElementById('load-btn') as HTMLButtonElement;
 const loadingIndicator = document.getElementById('loading-indicator') as HTMLDivElement;
+const params = new URLSearchParams(window.location.search);
+const initialUrl = params.get('url');
+const initialShareUrl = hasLidarShareParams(window.location.href);
 
 let map: maplibregl.Map | null = null;
 let lidarControl: LidarControl | null = null;
@@ -74,6 +77,7 @@ function initLidarControl(): LidarControl {
     pointSize: 2,
     opacity: 1.0,
     colorScheme: 'elevation',
+    restoreFromUrl: false,
   });
 
   return lidarControl;
@@ -161,6 +165,41 @@ async function loadPointCloud(url: string): Promise<void> {
   }
 }
 
+// Restore point cloud and visualization state from a shared URL
+async function restoreSharedLidarState(): Promise<void> {
+  loadingIndicator.style.display = 'block';
+  loadBtn.disabled = true;
+
+  try {
+    const mapInstance = initMap();
+
+    if (!mapInstance.loaded()) {
+      await new Promise<void>((resolve) => {
+        mapInstance.on('load', () => resolve());
+      });
+    }
+
+    const control = initLidarControl();
+    const lc = initLayerControl(control);
+    if (!mapInstance.hasControl(lc)) {
+      mapInstance.addControl(lc, 'top-right');
+    }
+    if (!mapInstance.hasControl(control)) {
+      mapInstance.addControl(control, 'top-right');
+    }
+
+    await control.restoreFromUrl(window.location.href);
+    urlFormContainer.style.display = 'none';
+  } catch (err) {
+    console.error('Failed to restore shared LiDAR state:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    alert(`Failed to restore shared LiDAR state: ${message}`);
+  } finally {
+    loadingIndicator.style.display = 'none';
+    loadBtn.disabled = false;
+  }
+}
+
 // Event listeners
 urlForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -181,11 +220,9 @@ document.querySelectorAll('.sample-urls button[data-url]').forEach((btn) => {
   });
 });
 
-// Check for URL parameter on page load
-const params = new URLSearchParams(window.location.search);
-const initialUrl = params.get('url');
-
-if (initialUrl) {
+if (initialShareUrl) {
+  restoreSharedLidarState();
+} else if (initialUrl) {
   urlInput.value = initialUrl;
   loadPointCloud(initialUrl);
 }

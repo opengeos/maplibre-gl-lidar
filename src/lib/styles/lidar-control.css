@@ -302,6 +302,28 @@
   background: #e0e0e0;
 }
 
+.lidar-share-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #fff;
+  padding-top: 10px;
+}
+
+.lidar-share-button {
+  width: 100%;
+}
+
+.lidar-share-status {
+  min-height: 16px;
+  color: #555;
+  font-size: 11px;
+  text-align: center;
+}
+
 /* File input styling */
 .lidar-file-input-wrapper {
   position: relative;

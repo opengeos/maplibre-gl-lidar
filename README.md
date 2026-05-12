@@ -227,7 +227,7 @@ const showOnlyBuildings = () => {
 </template>
 ```
 
-Available methods: `loadPointCloud`, `unloadPointCloud`, `flyToPointCloud`, `setPointSize`, `setColorScheme`, `setOpacity`, `setPickable`, `setUsePercentile`, `setElevationRange`, `clearElevationRange`, `setZOffset`, `setZOffsetEnabled`, `toggle`, `expand`, `collapse`, `getState`, `getPointClouds`, `stopStreaming`, `isStreaming`.
+Available methods: `loadPointCloud`, `unloadPointCloud`, `flyToPointCloud`, `setPointSize`, `setColorScheme`, `setOpacity`, `setPickable`, `setUsePercentile`, `setElevationRange`, `clearElevationRange`, `setZOffset`, `setZOffsetEnabled`, `getShareUrl`, `restoreFromUrl`, `toggle`, `expand`, `collapse`, `getState`, `getPointClouds`, `stopStreaming`, `isStreaming`.
 
 **Vue examples:** [EPT Streaming](https://mapcn-vue.geoql.in/examples/lidar-ept) · [Classification Filter](https://mapcn-vue.geoql.in/examples/lidar-classification)
 **Full docs:** [@geoql/v-maplibre LidarControl](https://v-maplibre.geoql.in/controls/lidar)
@@ -268,6 +268,8 @@ interface LidarControlOptions {
 
   // Behavior
   autoZoom?: boolean; // Auto zoom to data after loading (default: true)
+  shareUrl?: boolean; // Show Share URL button in the panel (default: true)
+  restoreFromUrl?: boolean; // Restore from Share URL query params on add (default: true)
 
   // COPC Streaming (dynamic loading)
   copcLoadingMode?: "full" | "dynamic"; // Loading mode for COPC files (default: 'dynamic')
@@ -287,6 +289,8 @@ stopStreaming(): void  // Stop dynamic loading and clean up
 unloadPointCloud(id?: string): void
 getPointClouds(): PointCloudInfo[]
 flyToPointCloud(id?: string): void
+getShareUrl(): string
+restoreFromUrl(url?: string): Promise<PointCloudInfo[]>
 
 // Styling
 setPointSize(size: number): void
@@ -327,6 +331,8 @@ off(event: LidarControlEvent, handler: LidarControlEventHandler): void
 getState(): LidarState
 getMap(): MapLibreMap | undefined
 ```
+
+Share URLs use readable query parameters such as `url`, `lon`, `lat`, `zoom`, `pitch`, `bearing`, `color`, `cmap`, `size`, `opacity`, and `zoff`.
 
 #### Events
 

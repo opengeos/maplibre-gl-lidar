@@ -32,6 +32,7 @@ export interface PanelBuilderCallbacks {
   onClassificationHideAll: () => void;
   onShowMetadata?: (id: string) => void;
   onCrossSectionPanel?: () => HTMLElement | null;
+  onShareUrl?: () => string;
 }
 
 /**
@@ -69,6 +70,7 @@ export class PanelBuilder {
   private _errorMessage?: HTMLElement;
   private _classificationLegend?: ClassificationLegend;
   private _classificationLegendContainer?: HTMLElement;
+  private _shareFeedbackTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(callbacks: PanelBuilderCallbacks, initialState: LidarState) {
     this._callbacks = callbacks;
@@ -109,6 +111,11 @@ export class PanelBuilder {
 
     // Error message
     content.appendChild(this._buildErrorMessage());
+
+    const shareSection = this._buildShareSection();
+    if (shareSection) {
+      content.appendChild(shareSection);
+    }
 
     return content;
   }
@@ -979,6 +986,82 @@ export class PanelBuilder {
     error.style.display = 'none';
     this._errorMessage = error;
     return error;
+  }
+
+  /**
+   * Builds the share URL button section if sharing is enabled.
+   */
+  private _buildShareSection(): HTMLElement | null {
+    if (!this._callbacks.onShareUrl) return null;
+
+    const section = document.createElement('div');
+    section.className = 'lidar-control-section lidar-share-section';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'lidar-control-button lidar-share-button';
+    button.textContent = 'Share URL';
+
+    const status = document.createElement('div');
+    status.className = 'lidar-share-status';
+    status.setAttribute('aria-live', 'polite');
+
+    button.addEventListener('click', async () => {
+      try {
+        const url = this._callbacks.onShareUrl?.();
+        if (!url) {
+          throw new Error('No share URL available');
+        }
+        await this._copyToClipboard(url);
+        this._setShareStatus(status, 'Copied');
+      } catch {
+        this._setShareStatus(status, 'Copy failed');
+      }
+    });
+
+    section.appendChild(button);
+    section.appendChild(status);
+
+    return section;
+  }
+
+  /**
+   * Copies text to the clipboard, falling back to a hidden textarea for older browsers.
+   */
+  private async _copyToClipboard(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    const copied = document.execCommand('copy');
+    textarea.remove();
+
+    if (!copied) {
+      throw new Error('Clipboard copy failed');
+    }
+  }
+
+  /**
+   * Shows short share button feedback.
+   */
+  private _setShareStatus(status: HTMLElement, message: string): void {
+    status.textContent = message;
+    if (this._shareFeedbackTimeout) {
+      clearTimeout(this._shareFeedbackTimeout);
+    }
+    this._shareFeedbackTimeout = setTimeout(() => {
+      status.textContent = '';
+    }, 2000);
   }
 
   /**
