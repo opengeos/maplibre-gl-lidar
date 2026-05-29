@@ -905,7 +905,6 @@ export class EptStreamingLoader {
     startIndex: number
   ): Promise<void> {
     // Load LAZ file using loaders.gl
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await load(url, LASLoader, {
       las: {
         shape: 'mesh',
