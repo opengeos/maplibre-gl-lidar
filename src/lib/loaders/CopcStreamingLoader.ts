@@ -749,6 +749,126 @@ export class CopcStreamingLoader {
   }
 
   /**
+   * Removes queued nodes that are outside the current viewport and re-sorts priorities.
+   *
+   * @param viewport - Current viewport information
+   */
+  pruneQueueForViewport(viewport: ViewportInfo): void {
+    if (this._loadingQueue.length === 0) return;
+
+    this._loadingQueue = this._loadingQueue.filter((node) =>
+      this._boundsIntersectsViewport(node.boundsWgs84, viewport)
+    );
+
+    for (const node of this._loadingQueue) {
+      const distPriority = this._calculateNodePriority(node.boundsWgs84, viewport);
+      const depth = node.keyArray[0];
+      node.priority = distPriority - (depth * 0.0001);
+    }
+
+    this._loadingQueue.sort((a, b) => (a.priority || Infinity) - (b.priority || Infinity));
+  }
+
+  /**
+   * Evicts loaded nodes outside the current viewport and compacts point buffers.
+   * Hierarchy metadata is kept so evicted nodes can be loaded again later.
+   *
+   * @param viewport - Current viewport information
+   * @returns True if eviction completed, or false if active requests are still writing buffers
+   */
+  evictLoadedNodesOutsideViewport(viewport: ViewportInfo): boolean {
+    if (this._activeRequests > 0) return false;
+
+    const loadedNodes = Array.from(this._nodeCache.values())
+      .filter((node) => node.state === 'loaded' && node.bufferStartIndex !== undefined);
+    if (loadedNodes.length === 0) return true;
+
+    const keepNodes = loadedNodes
+      .filter((node) => this._boundsIntersectsViewport(node.boundsWgs84, viewport))
+      .sort((a, b) => a.bufferStartIndex! - b.bufferStartIndex!);
+    const keepNodeKeys = new Set(keepNodes.map((node) => node.key));
+
+    let nextStart = 0;
+    for (const node of keepNodes) {
+      const oldStart = node.bufferStartIndex!;
+      if (oldStart !== nextStart) {
+        this._copyNodeBufferRange(oldStart, nextStart, node.pointCount);
+      }
+      node.bufferStartIndex = nextStart;
+      nextStart += node.pointCount;
+    }
+
+    let evictedCount = 0;
+    for (const node of this._nodeCache.values()) {
+      if (node.state === 'loaded' && keepNodeKeys.has(node.key)) continue;
+      if (node.state !== 'loaded' && node.state !== 'error') continue;
+
+      node.state = 'pending';
+      node.bufferStartIndex = undefined;
+      node.error = undefined;
+      node.priority = undefined;
+      evictedCount++;
+    }
+
+    const pointsChanged = nextStart !== this._totalLoadedPoints;
+    if (evictedCount > 0 || pointsChanged) {
+      this._totalLoadedPoints = nextStart;
+      this._totalLoadedNodes = keepNodes.length;
+      this._emit('progress', this._getProgressEvent());
+      this._scheduleLayerUpdate();
+    }
+
+    return true;
+  }
+
+  /**
+   * Resets loaded node data while retaining the COPC hierarchy cache.
+   *
+   * @returns True if reset completed, or false if active requests are still writing buffers
+   */
+  resetLoadedData(): boolean {
+    if (this._activeRequests > 0) return false;
+
+    this._loadingQueue = [];
+    this._totalLoadedPoints = 0;
+    this._totalLoadedNodes = 0;
+
+    for (const node of this._nodeCache.values()) {
+      if (node.state === 'loaded' || node.state === 'loading' || node.state === 'error') {
+        node.state = 'pending';
+        node.bufferStartIndex = undefined;
+        node.error = undefined;
+        node.priority = undefined;
+      }
+    }
+
+    this._emit('progress', this._getProgressEvent());
+    this._scheduleLayerUpdate();
+    return true;
+  }
+
+  /**
+   * Copies a node's point data from one buffer range to another.
+   *
+   * @param fromStart - Source point index
+   * @param toStart - Destination point index
+   * @param pointCount - Number of points to copy
+   */
+  private _copyNodeBufferRange(fromStart: number, toStart: number, pointCount: number): void {
+    this._positions!.copyWithin(toStart * 3, fromStart * 3, (fromStart + pointCount) * 3);
+    this._intensities!.copyWithin(toStart, fromStart, fromStart + pointCount);
+    this._classifications!.copyWithin(toStart, fromStart, fromStart + pointCount);
+
+    if (this._colors) {
+      this._colors.copyWithin(toStart * 4, fromStart * 4, (fromStart + pointCount) * 4);
+    }
+
+    for (const arr of Object.values(this._extraAttributes)) {
+      arr.copyWithin(toStart, fromStart, fromStart + pointCount);
+    }
+  }
+
+  /**
    * Loads a single node's point data.
    *
    * @param node - Node to load
@@ -1026,6 +1146,46 @@ export class CopcStreamingLoader {
    */
   getLoadedPointCount(): number {
     return this._totalLoadedPoints;
+  }
+
+  /**
+   * Gets the configured point budget.
+   *
+   * @returns Maximum point count for the streaming buffers
+   */
+  getPointBudget(): number {
+    return this._options.pointBudget;
+  }
+
+  /**
+   * Estimates viewport coverage ratio by loaded nodes.
+   *
+   * @param viewport - Current viewport information
+   * @param minDepth - Minimum octree depth to consider
+   * @returns Coverage ratio from 0 to 1
+   */
+  getViewportCoverageRatio(viewport: ViewportInfo, minDepth: number = 0): number {
+    const [west, south, east, north] = viewport.bounds;
+    const viewportArea = (east - west) * (north - south);
+    if (viewportArea <= 0) return 0;
+
+    let coveredArea = 0;
+
+    for (const node of this._nodeCache.values()) {
+      if (node.state !== 'loaded') continue;
+      if (node.keyArray[0] < minDepth) continue;
+
+      const intersectWest = Math.max(west, node.boundsWgs84.minX);
+      const intersectEast = Math.min(east, node.boundsWgs84.maxX);
+      const intersectSouth = Math.max(south, node.boundsWgs84.minY);
+      const intersectNorth = Math.min(north, node.boundsWgs84.maxY);
+
+      if (intersectWest < intersectEast && intersectSouth < intersectNorth) {
+        coveredArea += (intersectEast - intersectWest) * (intersectNorth - intersectSouth);
+      }
+    }
+
+    return Math.min(1.0, coveredArea / viewportArea);
   }
 
   /**
