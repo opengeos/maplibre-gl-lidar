@@ -19,6 +19,8 @@ interface ManagedPointCloud {
   visible: boolean;
   /** Per-layer opacity override (null means use global) */
   opacityOverride: number | null;
+  /** Number of deck.gl chunk layers currently created for this point cloud */
+  chunkCount: number;
 }
 
 /**
@@ -87,6 +89,7 @@ export class PointCloudManager {
       coordinateOrigin,
       visible: true,
       opacityOverride: null,
+      chunkCount: 0,
     });
     this._createLayer(id);
   }
@@ -99,12 +102,23 @@ export class PointCloudManager {
    * @param data - Updated point cloud data
    */
   updatePointCloud(id: string, data: PointCloudData): void {
-    // Skip update if no points to render
+    const existing = this._pointClouds.get(id);
+
     if (!data.positions || data.pointCount === 0) {
+      if (existing) {
+        this._pointClouds.set(id, {
+          id,
+          data,
+          colors: new Uint8Array(0),
+          coordinateOrigin: data.coordinateOrigin,
+          visible: existing.visible,
+          opacityOverride: existing.opacityOverride,
+          chunkCount: existing.chunkCount,
+        });
+        this._createLayer(id);
+      }
       return;
     }
-
-    const existing = this._pointClouds.get(id);
 
     if (existing) {
       // Recalculate colors for new data
@@ -127,6 +141,7 @@ export class PointCloudManager {
         coordinateOrigin: data.coordinateOrigin,
         visible: existing.visible,
         opacityOverride: existing.opacityOverride,
+        chunkCount: existing.chunkCount,
       });
 
       // Recreate layers with new data
@@ -156,9 +171,7 @@ export class PointCloudManager {
     const pc = this._pointClouds.get(id);
     if (pc) {
       // Remove all chunk layers
-      const CHUNK_SIZE = 1000000;
-      const numChunks = Math.ceil(pc.data.pointCount / CHUNK_SIZE);
-      for (let chunk = 0; chunk < numChunks; chunk++) {
+      for (let chunk = 0; chunk < pc.chunkCount; chunk++) {
         this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
       }
     }
@@ -393,9 +406,7 @@ export class PointCloudManager {
   clear(): void {
     for (const [id, pc] of this._pointClouds) {
       // Remove all chunk layers
-      const CHUNK_SIZE = 1000000;
-      const numChunks = Math.ceil(pc.data.pointCount / CHUNK_SIZE);
-      for (let chunk = 0; chunk < numChunks; chunk++) {
+      for (let chunk = 0; chunk < pc.chunkCount; chunk++) {
         this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
       }
     }
@@ -505,14 +516,14 @@ export class PointCloudManager {
     const zOffset = this._options.zOffset ?? 0;
     const layerOpacity = opacityOverride ?? this._options.opacity;
 
-    // Remove existing chunk layers first (use a generous upper bound)
-    const maxPossibleChunks = Math.ceil(data.pointCount / 1000000) + 1;
-    for (let chunk = 0; chunk < maxPossibleChunks; chunk++) {
+    // Remove existing chunk layers first.
+    for (let chunk = 0; chunk < pc.chunkCount; chunk++) {
       this._deckOverlay.removeLayer(`pointcloud-${id}-chunk${chunk}`);
     }
 
     // If layer is not visible, don't create any layers
     if (!visible) {
+      this._pointClouds.set(id, { ...pc, chunkCount: 0 });
       return;
     }
 
@@ -529,6 +540,7 @@ export class PointCloudManager {
 
     // If no points pass the filter, don't create any layers
     if (filteredIndices.length === 0) {
+      this._pointClouds.set(id, { ...pc, chunkCount: 0 });
       return;
     }
 
@@ -641,6 +653,8 @@ export class PointCloudManager {
 
       this._deckOverlay.addLayer(`pointcloud-${id}-chunk${chunk}`, layer);
     }
+
+    this._pointClouds.set(id, { ...pc, chunkCount: numChunks });
   }
 
   /**

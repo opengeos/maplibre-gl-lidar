@@ -117,6 +117,7 @@ export class LidarControl implements IControl {
   private _streamingLoaders: Map<string, CopcStreamingLoader> = new Map();
   private _eptStreamingLoaders: Map<string, EptStreamingLoader> = new Map();
   private _viewportManagers: Map<string, ViewportManager> = new Map();
+  private _copcViewportRequestIds: Map<string, number> = new Map();
   private _eptViewportRequestIds: Map<string, number> = new Map();
   private _eptLastViewport: Map<string, ViewportInfo> = new Map();
 
@@ -936,6 +937,7 @@ export class LidarControl implements IControl {
           streamingLoader.destroy();
           this._streamingLoaders.delete(id);
         }
+        this._copcViewportRequestIds.delete(id);
         const viewportManager = this._viewportManagers.get(id);
         if (viewportManager) {
           viewportManager.destroy();
@@ -963,6 +965,12 @@ export class LidarControl implements IControl {
         streamingActive: false,
         error: `Failed to load: ${error.message}`,
       });
+      const streamingLoader = this._streamingLoaders.get(id);
+      if (streamingLoader) {
+        streamingLoader.destroy();
+        this._streamingLoaders.delete(id);
+      }
+      this._copcViewportRequestIds.delete(id);
       this._emitWithData('loaderror', { error });
       throw error;
     }
@@ -1477,15 +1485,53 @@ export class LidarControl implements IControl {
    */
   private async _handleViewportChangeForStreaming(
     viewport: ViewportInfo,
-    datasetId: string
+    datasetId: string,
+    requestId?: number
   ): Promise<void> {
     const streamingLoader = this._streamingLoaders.get(datasetId);
     if (!streamingLoader) return;
 
     try {
-      // Select nodes for this viewport
-      const nodesToLoad =
-        await streamingLoader.selectNodesForViewport(viewport);
+      const currentRequestId = requestId ?? (this._copcViewportRequestIds.get(datasetId) ?? 0) + 1;
+      if (requestId === undefined) {
+        this._copcViewportRequestIds.set(datasetId, currentRequestId);
+      }
+
+      if (this._copcViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      streamingLoader.pruneQueueForViewport(viewport);
+
+      const evictSucceeded = streamingLoader.evictLoadedNodesOutsideViewport(viewport);
+      if (!evictSucceeded) {
+        setTimeout(() => {
+          this._handleViewportChangeForStreaming(viewport, datasetId, currentRequestId);
+        }, 200);
+        return;
+      }
+
+      let nodesToLoad = await streamingLoader.selectNodesForViewport(viewport);
+
+      if (this._copcViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      let resetSucceeded = false;
+      const loadedPoints = streamingLoader.getLoadedPointCount();
+      const pointBudget = streamingLoader.getPointBudget();
+      const budgetReached = loadedPoints >= pointBudget * 0.8;
+      const minDepthForCoverage = Math.max(0, viewport.targetDepth - 2);
+      const coverageRatio = streamingLoader.getViewportCoverageRatio(viewport, minDepthForCoverage);
+      const needsCoverage = coverageRatio < 0.5;
+      const hasPendingWork = nodesToLoad.length > 0;
+
+      if (budgetReached && needsCoverage && hasPendingWork) {
+        resetSucceeded = streamingLoader.resetLoadedData();
+        if (!resetSucceeded) {
+          setTimeout(() => {
+            this._handleViewportChangeForStreaming(viewport, datasetId, currentRequestId);
+          }, 200);
+          return;
+        }
+        nodesToLoad = await streamingLoader.selectNodesForViewport(viewport);
+      }
 
       // Queue nodes for loading
       for (const node of nodesToLoad) {
@@ -1494,6 +1540,14 @@ export class LidarControl implements IControl {
 
       // Start loading
       await streamingLoader.loadQueuedNodes();
+
+      if (this._copcViewportRequestIds.get(datasetId) !== currentRequestId) return;
+
+      if (budgetReached && needsCoverage && nodesToLoad.length > 0 && !resetSucceeded) {
+        setTimeout(() => {
+          this._handleViewportChangeForStreaming(viewport, datasetId, currentRequestId);
+        }, 200);
+      }
     } catch (err) {
       console.warn('Failed to load nodes for viewport:', err);
     }
@@ -1519,6 +1573,7 @@ export class LidarControl implements IControl {
         streamingLoader.destroy();
         this._streamingLoaders.delete(id);
       }
+      this._copcViewportRequestIds.delete(id);
 
       // Check EPT streaming loader
       const eptLoader = this._eptStreamingLoaders.get(id);
@@ -1567,6 +1622,7 @@ export class LidarControl implements IControl {
         streamingLoader.destroy();
       }
       this._streamingLoaders.clear();
+      this._copcViewportRequestIds.clear();
 
       // Destroy all EPT streaming loaders
       for (const eptLoader of this._eptStreamingLoaders.values()) {
