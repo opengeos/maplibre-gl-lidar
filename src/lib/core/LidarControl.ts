@@ -1538,16 +1538,9 @@ export class LidarControl implements IControl {
         streamingLoader.queueNode(node);
       }
 
-      // Start loading
+      // Start loading. The loader self-drains its queue as each request
+      // completes, so no follow-up pass is needed here.
       await streamingLoader.loadQueuedNodes();
-
-      if (this._copcViewportRequestIds.get(datasetId) !== currentRequestId) return;
-
-      if (budgetReached && needsCoverage && nodesToLoad.length > 0 && !resetSucceeded) {
-        setTimeout(() => {
-          this._handleViewportChangeForStreaming(viewport, datasetId, currentRequestId);
-        }, 200);
-      }
     } catch (err) {
       console.warn('Failed to load nodes for viewport:', err);
     }
