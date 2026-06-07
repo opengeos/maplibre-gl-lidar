@@ -93,6 +93,13 @@ function createAttributeArray(type: AttributeConfig['arrayType'], length: number
   }
 }
 
+/**
+ * Prevents 8bit double cast
+ */
+function toUint8Color(value: number): number {
+  return value > 255 ? value >> 8 : value;
+}
+
 // LazPerf instance for COPC decompression
 let lazPerfInstance: LazPerf | null = null;
 
@@ -1001,9 +1008,9 @@ export class CopcStreamingLoader {
 
       // Color (if available)
       if (this._colors && redGetter && greenGetter && blueGetter) {
-        this._colors[pointIndex * 4] = redGetter(i) >> 8;
-        this._colors[pointIndex * 4 + 1] = greenGetter(i) >> 8;
-        this._colors[pointIndex * 4 + 2] = blueGetter(i) >> 8;
+        this._colors[pointIndex * 4] = toUint8Color(redGetter(i));
+        this._colors[pointIndex * 4 + 1] = toUint8Color(greenGetter(i));
+        this._colors[pointIndex * 4 + 2] = toUint8Color(blueGetter(i));
         this._colors[pointIndex * 4 + 3] = 255;
       }
 
