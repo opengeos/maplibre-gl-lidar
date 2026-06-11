@@ -47,7 +47,7 @@ export class RequestCoalescer {
 
   /**
    * Requests a byte range, potentially coalescing with other pending requests
-   * 
+   *
    * @param begin Start byte offset
    * @param end End byte offset (exclusive)
    * @returns Promise that resolves to the fetched data
