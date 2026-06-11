@@ -3,8 +3,7 @@
  * Handles partial cache hits by combining cached ranges with new fetches
  */
 
-import type { RangeRequestCache, CacheStatistics } from './RangeRequestCache';
-import type { CacheLookupResult } from './RangeRequestCache';
+import type { RangeRequestCache } from './RangeRequestCache';
 
 /**
  * Creates a range-request getter with optional caching
@@ -70,7 +69,7 @@ async function fetchRange(url: string, begin: number, end: number): Promise<Uint
 /**
  * Gets cache statistics for monitoring
  */
-export function getCacheStats(cache?: RangeRequestCache): CacheStatistics | null {
+export function getCacheStats(cache?: RangeRequestCache) {
   if (!cache) return null;
   return cache.getStats();
 }
