@@ -46,7 +46,7 @@ export function createCopcUrlGetter(
 /**
  * Integration point in CopcStreamingLoader.initialize()
  * Replace the existing copc.js getter creation with:
- * 
+ *
  * ```typescript
  * const { getter, cache } = createCopcUrlGetter(
  *   this._source,
@@ -57,7 +57,7 @@ export function createCopcUrlGetter(
  * this._rangeCache = cache;
  * this._copc = await Copc.create(getter);
  * ```
- * 
+ *
  * And store the cache in the loader:
  * private _rangeCache: RangeRequestCache | null = null;
  */

@@ -51,7 +51,7 @@ Replace URL source handling:
 ```typescript
 if (typeof this._originalSource === 'string') {
   this._source = this._originalSource;
-  
+
   // Create cached getter
   const { getter, cache } = this._createCopcGetter(
     this._originalSource,
@@ -60,7 +60,7 @@ if (typeof this._originalSource === 'string') {
     this._options.rangeCacheMergeThreshold ?? 4 * 1024
   );
   this._rangeCache = cache;
-  
+
   try {
     this._copc = await Copc.create(getter);
   } catch (error) {
@@ -78,11 +78,11 @@ private _createCopcGetter(
   mergeThreshold: number
 ): { getter: Getter; cache: RangeRequestCache | null } {
   let cache: RangeRequestCache | null = null;
-  
+
   if (enableCache) {
     cache = new RangeRequestCache(cacheSize, mergeThreshold);
   }
-  
+
   const getter = createCachedRangeGetter(url, cache || undefined);
   return { getter, cache };
 }
@@ -92,7 +92,7 @@ private _createCopcGetter(
 ```typescript
 destroy(): void {
   // ... existing cleanup ...
-  
+
   // Clear range cache
   if (this._rangeCache) {
     this._rangeCache.clear();

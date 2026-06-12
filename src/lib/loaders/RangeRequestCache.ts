@@ -63,7 +63,7 @@ export class RangeRequestCache {
   /**
    * Looks up data in cache with intelligent partial hit support
    * Returns cached ranges and missing ranges separately
-   * 
+   *
    * @param url URL of the resource
    * @param begin Start byte offset
    * @param end End byte offset (exclusive)
@@ -107,7 +107,7 @@ export class RangeRequestCache {
       const overlapEnd = Math.min(end, block.end);
       const offset = overlapBegin - block.begin;
       const length = overlapEnd - overlapBegin;
-      
+
       cachedRanges.push({
         begin: overlapBegin,
         end: overlapEnd,
@@ -141,7 +141,7 @@ export class RangeRequestCache {
   /**
    * Reconstructs complete data from cached ranges and new fetched data
    * Assembles fragments back into contiguous buffer
-   * 
+   *
    * @param begin Start offset
    * @param end End offset
    * @param cachedRanges Ranges from cache
@@ -172,7 +172,7 @@ export class RangeRequestCache {
    * Stores data in cache with automatic block merging
    * Adjacent blocks within mergeThreshold are coalesced into larger blocks
    * Uses LRU eviction if cache exceeds max size
-   * 
+   *
    * @param url URL of the resource
    * @param begin Start byte offset
    * @param end End byte offset (exclusive)
@@ -222,7 +222,7 @@ export class RangeRequestCache {
   /**
    * Merges adjacent blocks within mergeThreshold
    * Coalesces multiple small blocks into larger ones for faster lookup
-   * 
+   *
    * @param url URL to merge blocks for
    */
   private _mergeBlocks(url: string): void {
