@@ -115,10 +115,23 @@ export interface LidarControlOptions {
 
   /**
    * Maximum height of the control panel in pixels.
-   * When content exceeds this height, a vertical scrollbar appears.
+   * When set, the panel will not grow taller than this and a vertical
+   * scrollbar appears once the content overflows. When omitted, the panel
+   * expands to use all available vertical space within the map and shows a
+   * vertical scrollbar only as needed. Users can also drag the corner handle
+   * to resize the panel manually.
    * @default 500
    */
   maxHeight?: number;
+
+  /**
+   * Color theme for the control UI.
+   * - `'auto'` follows the OS / browser `prefers-color-scheme` setting (default)
+   * - `'light'` forces the light theme
+   * - `'dark'` forces the dark theme (useful with dark basemaps)
+   * @default 'auto'
+   */
+  theme?: 'auto' | 'light' | 'dark';
 
   /**
    * Custom CSS class name for the control container

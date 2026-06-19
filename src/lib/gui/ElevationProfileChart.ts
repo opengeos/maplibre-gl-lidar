@@ -28,6 +28,14 @@ export class ElevationProfileChart {
   private _options: Required<ElevationProfileChartOptions>;
   private _profile: ElevationProfile | null = null;
   private _hoveredPointIndex: number = -1;
+  private _colors = {
+    bg: '#f8f8f8',
+    grid: '#dddddd',
+    axis: '#333333',
+    text: '#333333',
+    muted: '#888888',
+    highlight: '#000000',
+  };
 
   // Chart dimensions (with margins)
   private readonly MARGIN = { top: 20, right: 20, bottom: 40, left: 60 };
@@ -76,6 +84,47 @@ export class ElevationProfileChart {
    */
   render(): HTMLElement {
     return this._container;
+  }
+
+  /**
+   * Redraws the chart. Useful after a theme change since canvas colors are
+   * resolved from CSS variables at draw time.
+   */
+  redraw(): void {
+    this._draw();
+  }
+
+  /**
+   * Resolves the chart's theme colors from CSS custom properties so the
+   * canvas matches the active light/dark theme. Falls back to the light
+   * defaults when a variable is not defined.
+   *
+   * @returns Resolved theme colors
+   */
+  private _themeColors(): {
+    bg: string;
+    grid: string;
+    axis: string;
+    text: string;
+    muted: string;
+    highlight: string;
+  } {
+    const styles =
+      typeof window !== 'undefined'
+        ? window.getComputedStyle(document.documentElement)
+        : null;
+    const read = (name: string, fallback: string): string => {
+      const value = styles?.getPropertyValue(name)?.trim();
+      return value ? value : fallback;
+    };
+    return {
+      bg: read('--lidar-chart-bg', '#f8f8f8'),
+      grid: read('--lidar-chart-grid', '#dddddd'),
+      axis: read('--lidar-chart-axis', '#333333'),
+      text: read('--lidar-chart-text', '#333333'),
+      muted: read('--lidar-chart-muted', '#888888'),
+      highlight: read('--lidar-chart-highlight', '#000000'),
+    };
   }
 
   /**
@@ -130,11 +179,14 @@ export class ElevationProfileChart {
     const { width, height } = this._options;
     const ctx = this._ctx;
 
+    // Resolve theme colors (light/dark) from CSS variables at draw time.
+    this._colors = this._themeColors();
+
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
     // Draw background
-    ctx.fillStyle = '#f8f8f8';
+    ctx.fillStyle = this._colors.bg;
     ctx.fillRect(0, 0, width, height);
 
     if (!this._profile || this._profile.points.length === 0) {
@@ -163,7 +215,7 @@ export class ElevationProfileChart {
     const { width, height } = this._options;
     const ctx = this._ctx;
 
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = this._colors.muted;
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -180,7 +232,7 @@ export class ElevationProfileChart {
     const ctx = this._ctx;
     const { left, top } = this.MARGIN;
 
-    ctx.strokeStyle = '#ddd';
+    ctx.strokeStyle = this._colors.grid;
     ctx.lineWidth = 1;
 
     // Horizontal grid lines (5 lines)
@@ -241,7 +293,7 @@ export class ElevationProfileChart {
 
       // Highlight hovered point
       if (i === this._hoveredPointIndex) {
-        ctx.strokeStyle = '#000';
+        ctx.strokeStyle = this._colors.highlight;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, pointRadius + 2, 0, Math.PI * 2);
@@ -264,7 +316,7 @@ export class ElevationProfileChart {
     const { width, height } = this._options;
     const { stats } = this._profile;
 
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = this._colors.axis;
     ctx.lineWidth = 1;
 
     // Y axis
@@ -280,7 +332,7 @@ export class ElevationProfileChart {
     ctx.stroke();
 
     // Axis labels
-    ctx.fillStyle = '#333';
+    ctx.fillStyle = this._colors.text;
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';

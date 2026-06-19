@@ -110,6 +110,15 @@ export class CrossSectionPanel {
   }
 
   /**
+   * Redraws the elevation charts so their canvas colors pick up the active
+   * light/dark theme.
+   */
+  refreshTheme(): void {
+    this._chart.redraw();
+    this._popupChart?.redraw();
+  }
+
+  /**
    * Updates the elevation profile display.
    *
    * @param profile - Elevation profile data
