@@ -91,7 +91,7 @@ map.on('load', () => {
   map.addControl(layerControl, 'top-right');
 
   // Add LidarControl after LayerControl
-  map.addControl(lidarControl, 'top-right');
+  map.addControl(lidarControl, 'top-left');
 
 
 

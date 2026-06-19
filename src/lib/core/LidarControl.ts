@@ -44,6 +44,7 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   title: 'LiDAR Viewer',
   panelWidth: 365,
   maxHeight: 500,
+  theme: 'auto',
   className: '',
   pointSize: 2,
   opacity: 1.0,
@@ -106,6 +107,13 @@ export class LidarControl implements IControl {
   private _mapResizeHandler: (() => void) | null = null;
   private _clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
 
+  // User-defined panel size from dragging the resize handle (null = auto)
+  private _userPanelWidth: number | null = null;
+  private _userPanelHeight: number | null = null;
+  private _resizeHandle?: HTMLElement;
+  private _panelResizeCleanup: (() => void) | null = null;
+  private _maxHeightExplicit = false;
+
   // Core components
   private _deckOverlay?: DeckOverlay;
   private _pointCloudManager?: PointCloudManager;
@@ -138,6 +146,9 @@ export class LidarControl implements IControl {
    */
   constructor(options?: Partial<LidarControlOptions>) {
     this._options = { ...DEFAULT_OPTIONS, ...options };
+    // Track whether the caller explicitly capped the panel height. When they
+    // did not, the panel fills the available vertical space instead.
+    this._maxHeightExplicit = options?.maxHeight !== undefined;
     // Build default color range from options or use defaults
     const defaultColorRange: ColorRangeConfig = this._options.colorRange ?? {
       mode: 'percentile',
@@ -203,6 +214,10 @@ export class LidarControl implements IControl {
       onHover: (info) => this._handlePointHover(info),
     });
 
+    // Apply the color theme (sets a class on <html> so body-level panels
+    // and modals inherit the right CSS variables too).
+    this._applyTheme(this._options.theme);
+
     // Create tooltip element
     this._tooltip = this._createTooltip();
     document.body.appendChild(this._tooltip);
@@ -263,6 +278,16 @@ export class LidarControl implements IControl {
     if (this._clickOutsideHandler) {
       document.removeEventListener('click', this._clickOutsideHandler);
       this._clickOutsideHandler = null;
+    }
+    if (this._panelResizeCleanup) {
+      this._panelResizeCleanup();
+      this._panelResizeCleanup = null;
+    }
+    this._resizeHandle = undefined;
+
+    // Remove the theme override class from the document root.
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('lidar-theme-light', 'lidar-theme-dark');
     }
 
     // Remove tooltip
@@ -2239,6 +2264,14 @@ export class LidarControl implements IControl {
     panel.appendChild(header);
     panel.appendChild(content);
 
+    // Drag-to-resize handle (corner is set in _updatePanelPosition()).
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'lidar-control-resize-handle corner-bottom-left';
+    resizeHandle.setAttribute('aria-hidden', 'true');
+    panel.appendChild(resizeHandle);
+    this._resizeHandle = resizeHandle;
+    this._setupPanelResize(resizeHandle, panel);
+
     return panel;
   }
 
@@ -2611,6 +2644,10 @@ export class LidarControl implements IControl {
 
     const panelGap = 5; // Gap between button and panel
     let availableHeight = mapRect.height - panelGap * 2;
+    let availableWidth = mapRect.width - panelGap * 2;
+    // The resize handle goes on the corner opposite the map anchor so the
+    // anchored corner stays fixed while dragging.
+    let handleCorner = 'corner-bottom-left';
 
     // Reset all positioning
     this._panel.style.top = '';
@@ -2624,6 +2661,8 @@ export class LidarControl implements IControl {
         this._panel.style.top = `${buttonTop + buttonRect.height + panelGap}px`;
         this._panel.style.left = `${buttonLeft}px`;
         availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
+        availableWidth = mapRect.width - buttonLeft - panelGap;
+        handleCorner = 'corner-bottom-right';
         break;
 
       case 'top-right':
@@ -2631,6 +2670,8 @@ export class LidarControl implements IControl {
         this._panel.style.top = `${buttonTop + buttonRect.height + panelGap}px`;
         this._panel.style.right = `${buttonRight}px`;
         availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
+        availableWidth = mapRect.width - buttonRight - panelGap;
+        handleCorner = 'corner-bottom-left';
         break;
 
       case 'bottom-left':
@@ -2638,6 +2679,8 @@ export class LidarControl implements IControl {
         this._panel.style.bottom = `${buttonBottom + buttonRect.height + panelGap}px`;
         this._panel.style.left = `${buttonLeft}px`;
         availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
+        availableWidth = mapRect.width - buttonLeft - panelGap;
+        handleCorner = 'corner-top-right';
         break;
 
       case 'bottom-right':
@@ -2645,23 +2688,161 @@ export class LidarControl implements IControl {
         this._panel.style.bottom = `${buttonBottom + buttonRect.height + panelGap}px`;
         this._panel.style.right = `${buttonRight}px`;
         availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
+        availableWidth = mapRect.width - buttonRight - panelGap;
+        handleCorner = 'corner-top-left';
         break;
     }
 
-    const panelMaxHeight = Math.max(220, availableHeight);
-    this._panel.style.maxHeight = `${panelMaxHeight}px`;
+    availableHeight = Math.max(LidarControl.MIN_PANEL_HEIGHT, availableHeight);
+    availableWidth = Math.max(LidarControl.MIN_PANEL_WIDTH, availableWidth);
 
-    const header = this._panel.querySelector('.lidar-control-header') as HTMLElement | null;
-    const content = this._panel.querySelector('.lidar-control-content') as HTMLElement | null;
-    if (content) {
-      const headerHeight = header?.offsetHeight ?? 0;
-      const panelPadding = 16;
-      const contentMaxHeight = Math.max(
-        180,
-        Math.min(this._state.maxHeight, panelMaxHeight - headerHeight - panelPadding)
+    // Width: honor a user-dragged width (clamped), else the configured default.
+    const defaultWidth = this._userPanelWidth ?? this._options.panelWidth;
+    const width = Math.min(
+      Math.max(defaultWidth, LidarControl.MIN_PANEL_WIDTH),
+      availableWidth
+    );
+    this._panel.style.width = `${width}px`;
+
+    // Height: the flex content area scrolls vertically only when it overflows.
+    // A user-dragged height is honored (clamped to the available space). When
+    // no height is set, the panel fills the available vertical space, unless
+    // the caller explicitly capped it via the `maxHeight` option.
+    if (this._userPanelHeight !== null) {
+      this._panel.style.maxHeight = `${availableHeight}px`;
+      const height = Math.min(
+        Math.max(this._userPanelHeight, LidarControl.MIN_PANEL_HEIGHT),
+        availableHeight
       );
-      content.style.maxHeight = `${contentMaxHeight}px`;
+      this._panel.style.height = `${height}px`;
+    } else if (this._maxHeightExplicit) {
+      // Caller capped the height: size to content up to the cap.
+      const cap = Math.min(
+        availableHeight,
+        Math.max(this._options.maxHeight, LidarControl.MIN_PANEL_HEIGHT)
+      );
+      this._panel.style.maxHeight = `${cap}px`;
+      this._panel.style.height = '';
+    } else {
+      // Default: fill all available vertical space.
+      this._panel.style.maxHeight = `${availableHeight}px`;
+      this._panel.style.height = `${availableHeight}px`;
     }
+
+    // Move the resize handle to the corner opposite the map anchor.
+    if (this._resizeHandle) {
+      this._resizeHandle.className = `lidar-control-resize-handle ${handleCorner}`;
+    }
+  }
+
+  /** Minimum panel width when resizing (px). */
+  private static readonly MIN_PANEL_WIDTH = 240;
+  /** Minimum panel height when resizing (px). */
+  private static readonly MIN_PANEL_HEIGHT = 160;
+
+  /**
+   * Wires up drag-to-resize on the panel's corner handle. The panel keeps its
+   * map-anchored corner fixed, so the handle on the opposite corner grows or
+   * shrinks the panel width and height.
+   *
+   * @param handle - The resize handle element
+   * @param panel - The panel element being resized
+   */
+  private _setupPanelResize(handle: HTMLElement, panel: HTMLElement): void {
+    let startX = 0;
+    let startY = 0;
+    let startWidth = 0;
+    let startHeight = 0;
+    let anchorRight = false;
+    let anchorBottom = false;
+
+    const onPointerMove = (e: PointerEvent): void => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      this._userPanelWidth = startWidth + (anchorRight ? -dx : dx);
+      this._userPanelHeight = startHeight + (anchorBottom ? -dy : dy);
+      this._updatePanelPosition();
+    };
+
+    const onPointerUp = (e: PointerEvent): void => {
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore - pointer may already be released
+      }
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    };
+
+    const onPointerDown = (e: PointerEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = panel.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = rect.width;
+      startHeight = rect.height;
+      // Handle on a *-left corner means the panel is anchored to the right;
+      // a top-* corner means it is anchored to the bottom.
+      anchorRight =
+        handle.classList.contains('corner-bottom-left') ||
+        handle.classList.contains('corner-top-left');
+      anchorBottom =
+        handle.classList.contains('corner-top-left') ||
+        handle.classList.contains('corner-top-right');
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        // ignore - capture is best-effort
+      }
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    };
+
+    handle.addEventListener('pointerdown', onPointerDown);
+    this._panelResizeCleanup = (): void => {
+      handle.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    };
+  }
+
+  /**
+   * Applies a color theme by toggling a class on the document root. Using the
+   * root element (rather than the control) ensures panels and modals appended
+   * to <body> inherit the same theme variables. `'auto'` removes the override
+   * classes so the CSS `prefers-color-scheme` media query takes effect.
+   *
+   * @param theme - The theme to apply
+   */
+  private _applyTheme(theme: 'auto' | 'light' | 'dark'): void {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    root.classList.remove('lidar-theme-light', 'lidar-theme-dark');
+    if (theme === 'dark') {
+      root.classList.add('lidar-theme-dark');
+    } else if (theme === 'light') {
+      root.classList.add('lidar-theme-light');
+    }
+  }
+
+  /**
+   * Sets the color theme of the control at runtime.
+   *
+   * @param theme - `'auto'` (follow OS), `'light'`, or `'dark'`
+   */
+  setTheme(theme: 'auto' | 'light' | 'dark'): void {
+    this._options.theme = theme;
+    this._applyTheme(theme);
+    // Canvas charts resolve their colors from CSS variables, so redraw them.
+    this._crossSectionPanel?.refreshTheme();
+  }
+
+  /**
+   * Returns the currently configured theme.
+   */
+  getTheme(): 'auto' | 'light' | 'dark' {
+    return this._options.theme;
   }
 
   // ==================== Metadata Viewer API ====================

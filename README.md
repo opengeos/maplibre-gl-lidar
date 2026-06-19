@@ -246,8 +246,9 @@ interface LidarControlOptions {
   collapsed?: boolean; // Start collapsed (default: true)
   position?: string; // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   title?: string; // Panel title (default: 'LiDAR Viewer')
-  panelWidth?: number; // Panel width in pixels (default: 365)
+  panelWidth?: number; // Initial panel width in pixels (default: 365)
   panelMaxHeight?: number; // Panel max height with scrollbar (default: 500)
+  theme?: 'auto' | 'light' | 'dark'; // Color theme (default: 'auto', follows OS)
   className?: string; // Custom CSS class
 
   // Point cloud styling
@@ -318,6 +319,10 @@ hideAllClassifications(): void
 getHiddenClassifications(): number[]
 getAvailableClassifications(): number[]
 
+// Theme
+setTheme(theme: 'auto' | 'light' | 'dark'): void
+getTheme(): 'auto' | 'light' | 'dark'
+
 // Panel control
 toggle(): void
 expand(): void
@@ -333,6 +338,22 @@ getMap(): MapLibreMap | undefined
 ```
 
 Share URLs use readable query parameters such as `url`, `lon`, `lat`, `zoom`, `pitch`, `bearing`, `color`, `cmap`, `size`, `opacity`, and `zoff`.
+
+#### Theming
+
+The control adapts to light and dark themes. By default (`theme: 'auto'`) it follows the operating system / browser `prefers-color-scheme` setting. Set `theme: 'dark'` or `theme: 'light'` to force a theme, which is handy when pairing the control with a dark basemap, and call `setTheme(...)` to switch at runtime:
+
+```typescript
+const control = new LidarControl({ theme: 'dark' });
+// later
+control.setTheme('auto');
+```
+
+All colors are driven by `--lidar-*` CSS custom properties, so you can override individual tokens (or the whole palette) in your own stylesheet. Forced themes add a `lidar-theme-dark` / `lidar-theme-light` class to the `<html>` element so panels and modals rendered at the document root inherit the theme too.
+
+#### Resizable panel
+
+The panel can be resized by dragging the grip in its free bottom corner (bottom-left for right-anchored positions, bottom-right for left-anchored positions). It expands to use the available vertical space and shows a vertical scrollbar only when the content overflows.
 
 #### Events
 
