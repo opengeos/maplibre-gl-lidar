@@ -69,6 +69,9 @@ const DEFAULT_OPTIONS: Required<Omit<LidarControlOptions, 'pickInfoFields' | 'co
   terrainExaggeration: 1.0,
   shareUrl: true,
   restoreFromUrl: true,
+  sampleData: [],
+  sampleDataLabel: 'Load sample data...',
+  closeOnOutsideClick: true,
 };
 
 /**
@@ -2256,7 +2259,11 @@ export class LidarControl implements IControl {
         onCrossSectionPanel: () => this.getCrossSectionPanel().render(),
         onShareUrl: this._options.shareUrl ? () => this.getShareUrl() : undefined,
       },
-      this._state
+      this._state,
+      {
+        sampleData: this._options.sampleData,
+        sampleDataLabel: this._options.sampleDataLabel,
+      }
     );
 
     const content = this._panelBuilder.build();
@@ -2567,25 +2574,29 @@ export class LidarControl implements IControl {
    * Setup event listeners for panel positioning and click-outside behavior.
    */
   private _setupEventListeners(): void {
-    // Click outside to close (check both container and panel since they're now separate)
-    this._clickOutsideHandler = (e: MouseEvent) => {
-      // Don't collapse if cross-section tool is active or has a line drawn
-      // (the second click to finish drawing should not collapse the panel)
-      if (this._crossSectionTool?.isEnabled() || this._crossSectionTool?.getLine()) {
-        return;
-      }
+    // Click outside to close (check both container and panel since they're now
+    // separate). Skipped when closeOnOutsideClick is false, so the panel stays
+    // open until the header close button is used.
+    if (this._options.closeOnOutsideClick !== false) {
+      this._clickOutsideHandler = (e: MouseEvent) => {
+        // Don't collapse if cross-section tool is active or has a line drawn
+        // (the second click to finish drawing should not collapse the panel)
+        if (this._crossSectionTool?.isEnabled() || this._crossSectionTool?.getLine()) {
+          return;
+        }
 
-      const target = e.target as Node;
-      if (
-        this._container &&
-        this._panel &&
-        !this._container.contains(target) &&
-        !this._panel.contains(target)
-      ) {
-        this.collapse();
-      }
-    };
-    document.addEventListener('click', this._clickOutsideHandler);
+        const target = e.target as Node;
+        if (
+          this._container &&
+          this._panel &&
+          !this._container.contains(target) &&
+          !this._panel.contains(target)
+        ) {
+          this.collapse();
+        }
+      };
+      document.addEventListener('click', this._clickOutsideHandler);
+    }
 
     // Update panel position on window resize
     this._resizeHandler = () => {

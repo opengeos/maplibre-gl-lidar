@@ -1,4 +1,11 @@
-import type { LidarState, ColorScheme, PointCloudInfo, ColormapName, ColorRangeConfig } from '../core/types';
+import type {
+  LidarState,
+  ColorScheme,
+  PointCloudInfo,
+  ColormapName,
+  ColorRangeConfig,
+  LidarSampleDataset,
+} from '../core/types';
 import { FileInput } from './FileInput';
 import { RangeSlider } from './RangeSlider';
 import { DualRangeSlider } from './DualRangeSlider';
@@ -41,6 +48,8 @@ export interface PanelBuilderCallbacks {
 export class PanelBuilder {
   private _callbacks: PanelBuilderCallbacks;
   private _state: LidarState;
+  private _sampleData: LidarSampleDataset[];
+  private _sampleDataLabel: string;
 
   // UI component references
   private _fileInput?: FileInput;
@@ -71,9 +80,15 @@ export class PanelBuilder {
   private _classificationLegendContainer?: HTMLElement;
   private _shareFeedbackTimeout?: ReturnType<typeof setTimeout>;
 
-  constructor(callbacks: PanelBuilderCallbacks, initialState: LidarState) {
+  constructor(
+    callbacks: PanelBuilderCallbacks,
+    initialState: LidarState,
+    options?: { sampleData?: LidarSampleDataset[]; sampleDataLabel?: string },
+  ) {
     this._callbacks = callbacks;
     this._state = initialState;
+    this._sampleData = options?.sampleData ?? [];
+    this._sampleDataLabel = options?.sampleDataLabel ?? 'Load sample data...';
   }
 
   /**
@@ -280,6 +295,10 @@ export class PanelBuilder {
     });
     section.appendChild(this._fileInput.render());
 
+    // Sample-data dropdown (opt-in; fills the URL input)
+    const sampleDropdown = this._buildSampleDropdown();
+    if (sampleDropdown) section.appendChild(sampleDropdown);
+
     // URL input
     const urlGroup = document.createElement('div');
     urlGroup.className = 'lidar-control-group';
@@ -326,6 +345,90 @@ export class PanelBuilder {
     section.appendChild(urlGroup);
 
     return section;
+  }
+
+  /**
+   * Builds the "Load sample data" dropdown: a custom (not native `<select>`)
+   * dropdown so the menu themes correctly in dark mode. Picking an entry fills
+   * the URL input. Returns null when no samples are configured.
+   */
+  private _buildSampleDropdown(): HTMLElement | null {
+    if (this._sampleData.length === 0) return null;
+
+    const group = document.createElement('div');
+    group.className = 'lidar-control-group';
+    group.style.marginTop = '12px';
+
+    const label = document.createElement('label');
+    label.className = 'lidar-control-label';
+    label.textContent = 'Sample data';
+    group.appendChild(label);
+
+    const triggerLabel = document.createElement('span');
+    triggerLabel.className = 'lidar-sample-trigger-label';
+    triggerLabel.textContent = this._sampleDataLabel;
+    const caret = document.createElement('span');
+    caret.className = 'lidar-sample-caret';
+    caret.textContent = '▾';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'lidar-sample-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', this._sampleDataLabel);
+    trigger.appendChild(triggerLabel);
+    trigger.appendChild(caret);
+
+    const menu = document.createElement('div');
+    menu.className = 'lidar-sample-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+
+    let menuOpen = false;
+    const setMenuOpen = (open: boolean): void => {
+      menuOpen = open;
+      menu.hidden = !open;
+      trigger.setAttribute('aria-expanded', String(open));
+      trigger.classList.toggle('open', open);
+      if (open) (menu.firstElementChild as HTMLElement | null)?.focus();
+    };
+
+    for (const sample of this._sampleData) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'lidar-sample-option';
+      option.setAttribute('role', 'option');
+      option.textContent = sample.label;
+      option.title = sample.url;
+      option.addEventListener('click', () => {
+        setMenuOpen(false);
+        trigger.focus();
+        if (this._urlInput) this._urlInput.value = sample.url;
+      });
+      menu.appendChild(option);
+    }
+
+    trigger.addEventListener('click', () => setMenuOpen(!menuOpen));
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'lidar-sample-dropdown';
+    dropdown.appendChild(trigger);
+    dropdown.appendChild(menu);
+    group.appendChild(dropdown);
+
+    // Close on Escape or when focus leaves the dropdown (no document listener).
+    group.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menuOpen) {
+        setMenuOpen(false);
+        trigger.focus();
+      }
+    });
+    group.addEventListener('focusout', (e) => {
+      const next = e.relatedTarget as Node | null;
+      if (!next || !group.contains(next)) setMenuOpen(false);
+    });
+
+    return group;
   }
 
   /**
