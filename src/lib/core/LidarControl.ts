@@ -2717,8 +2717,9 @@ export class LidarControl implements IControl {
 
     // Height: the flex content area scrolls vertically only when it overflows.
     // A user-dragged height is honored (clamped to the available space). When
-    // no height is set, the panel fills the available vertical space, unless
-    // the caller explicitly capped it via the `maxHeight` option.
+    // no height is set, the panel sizes to its content, growing up to the
+    // available vertical space, unless the caller explicitly capped it via the
+    // `maxHeight` option.
     if (this._userPanelHeight !== null) {
       this._panel.style.maxHeight = `${availableHeight}px`;
       const height = Math.min(
@@ -2735,9 +2736,11 @@ export class LidarControl implements IControl {
       this._panel.style.maxHeight = `${cap}px`;
       this._panel.style.height = '';
     } else {
-      // Default: fill all available vertical space.
+      // Default: size to content, growing up to the available space and
+      // scrolling the content area on overflow. No explicit height is set so
+      // the panel can shrink to fit short content and stay reducible.
       this._panel.style.maxHeight = `${availableHeight}px`;
-      this._panel.style.height = `${availableHeight}px`;
+      this._panel.style.height = '';
     }
 
     // Move the resize handle to the corner opposite the map anchor.
