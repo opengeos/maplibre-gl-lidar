@@ -113,7 +113,6 @@ export class LidarControl implements IControl {
   // User-defined panel size from dragging the resize handle (null = auto)
   private _userPanelWidth: number | null = null;
   private _userPanelHeight: number | null = null;
-  private _resizeHandle?: HTMLElement;
   private _panelResizeCleanup: (() => void) | null = null;
   private _maxHeightExplicit = false;
 
@@ -286,7 +285,6 @@ export class LidarControl implements IControl {
       this._panelResizeCleanup();
       this._panelResizeCleanup = null;
     }
-    this._resizeHandle = undefined;
 
     // Remove the theme override class from the document root.
     if (typeof document !== 'undefined') {
@@ -2271,13 +2269,8 @@ export class LidarControl implements IControl {
     panel.appendChild(header);
     panel.appendChild(content);
 
-    // Drag-to-resize handle (corner is set in _updatePanelPosition()).
-    const resizeHandle = document.createElement('div');
-    resizeHandle.className = 'lidar-control-resize-handle corner-bottom-left';
-    resizeHandle.setAttribute('aria-hidden', 'true');
-    panel.appendChild(resizeHandle);
-    this._resizeHandle = resizeHandle;
-    this._setupPanelResize(resizeHandle, panel);
+    // Drag-to-resize handles in both bottom corners.
+    this._addResizeHandles(panel);
 
     return panel;
   }
@@ -2656,9 +2649,6 @@ export class LidarControl implements IControl {
     const panelGap = 5; // Gap between button and panel
     let availableHeight = mapRect.height - panelGap * 2;
     let availableWidth = mapRect.width - panelGap * 2;
-    // The resize handle goes on the corner opposite the map anchor so the
-    // anchored corner stays fixed while dragging.
-    let handleCorner = 'corner-bottom-left';
 
     // Reset all positioning
     this._panel.style.top = '';
@@ -2673,7 +2663,6 @@ export class LidarControl implements IControl {
         this._panel.style.left = `${buttonLeft}px`;
         availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
         availableWidth = mapRect.width - buttonLeft - panelGap;
-        handleCorner = 'corner-bottom-right';
         break;
 
       case 'top-right':
@@ -2682,7 +2671,6 @@ export class LidarControl implements IControl {
         this._panel.style.right = `${buttonRight}px`;
         availableHeight = mapRect.height - (buttonTop + buttonRect.height + panelGap) - panelGap;
         availableWidth = mapRect.width - buttonRight - panelGap;
-        handleCorner = 'corner-bottom-left';
         break;
 
       case 'bottom-left':
@@ -2691,7 +2679,6 @@ export class LidarControl implements IControl {
         this._panel.style.left = `${buttonLeft}px`;
         availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
         availableWidth = mapRect.width - buttonLeft - panelGap;
-        handleCorner = 'corner-top-right';
         break;
 
       case 'bottom-right':
@@ -2700,7 +2687,6 @@ export class LidarControl implements IControl {
         this._panel.style.right = `${buttonRight}px`;
         availableHeight = mapRect.height - (buttonBottom + buttonRect.height + panelGap) - panelGap;
         availableWidth = mapRect.width - buttonRight - panelGap;
-        handleCorner = 'corner-top-left';
         break;
     }
 
@@ -2742,11 +2728,6 @@ export class LidarControl implements IControl {
       this._panel.style.maxHeight = `${availableHeight}px`;
       this._panel.style.height = '';
     }
-
-    // Move the resize handle to the corner opposite the map anchor.
-    if (this._resizeHandle) {
-      this._resizeHandle.className = `lidar-control-resize-handle ${handleCorner}`;
-    }
   }
 
   /** Minimum panel width when resizing (px). */
@@ -2755,70 +2736,123 @@ export class LidarControl implements IControl {
   private static readonly MIN_PANEL_HEIGHT = 160;
 
   /**
-   * Wires up drag-to-resize on the panel's corner handle. The panel keeps its
-   * map-anchored corner fixed, so the handle on the opposite corner grows or
-   * shrinks the panel width and height.
+   * Adds drag handles in the panel's bottom-left and bottom-right corners.
+   * Pointer drags resize the panel and the chosen size is kept (in
+   * {@link _userPanelWidth}/{@link _userPanelHeight}) so repositioning does
+   * not reset it.
    *
-   * @param handle - The resize handle element
-   * @param panel - The panel element being resized
+   * @param panel - The panel element to attach handles to
    */
-  private _setupPanelResize(handle: HTMLElement, panel: HTMLElement): void {
-    let startX = 0;
-    let startY = 0;
-    let startWidth = 0;
-    let startHeight = 0;
-    let anchorRight = false;
-    let anchorBottom = false;
+  private _addResizeHandles(panel: HTMLElement): void {
+    for (const side of ['left', 'right'] as const) {
+      const handle = document.createElement('div');
+      handle.className = `lidar-control-resize-handle lidar-control-resize-${side}`;
+      handle.setAttribute('aria-hidden', 'true');
+      handle.addEventListener('pointerdown', (event) =>
+        this._beginResize(event, side, panel, handle)
+      );
+      panel.appendChild(handle);
+    }
+  }
 
-    const onPointerMove = (e: PointerEvent): void => {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      this._userPanelWidth = startWidth + (anchorRight ? -dx : dx);
-      this._userPanelHeight = startHeight + (anchorBottom ? -dy : dy);
-      this._updatePanelPosition();
-    };
+  /**
+   * Starts a pointer-driven resize from one of the bottom-corner handles.
+   *
+   * The panel is first frozen to explicit left/top pixels (clearing any
+   * right/bottom anchor) so the opposite edge stays put no matter which
+   * corner the control sits in. The right handle then grows the panel
+   * rightward, the left handle leftward; both grow it downward. Sizes are
+   * clamped to a sensible minimum and to the map container, and the chosen
+   * size is stored in {@link _userPanelWidth}/{@link _userPanelHeight} so
+   * {@link _updatePanelPosition} reapplies it on later repositioning.
+   *
+   * @param event - The pointerdown event
+   * @param side - Which corner handle started the drag
+   * @param panel - The panel element being resized
+   * @param handle - The handle element (for pointer capture)
+   */
+  private _beginResize(
+    event: PointerEvent,
+    side: 'left' | 'right',
+    panel: HTMLElement,
+    handle: HTMLElement
+  ): void {
+    if (!this._mapContainer) return;
+    event.preventDefault();
+    // Keep the drag from bubbling to the document click-outside handler.
+    event.stopPropagation();
 
-    const onPointerUp = (e: PointerEvent): void => {
-      try {
-        handle.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore - pointer may already be released
+    const mapRect = this._mapContainer.getBoundingClientRect();
+    const rect = panel.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startWidth = rect.width;
+    const startHeight = rect.height;
+    const startLeft = rect.left - mapRect.left;
+    const startRight = rect.right;
+    const startTop = rect.top;
+
+    const EDGE_MARGIN = 10;
+    // Clamp the preferred minimums to what the map can actually hold, so a
+    // small map container never forces the panel past its edges.
+    const minWidth = Math.min(
+      LidarControl.MIN_PANEL_WIDTH,
+      Math.max(120, mapRect.width - 2 * EDGE_MARGIN)
+    );
+    const minHeight = Math.min(
+      LidarControl.MIN_PANEL_HEIGHT,
+      Math.max(120, mapRect.height - 2 * EDGE_MARGIN)
+    );
+
+    // Pin the panel to its current rect so the size grows from the dragged
+    // corner regardless of the original anchor, and drop the CSS max-size
+    // caps for the duration of the drag.
+    panel.style.left = `${startLeft}px`;
+    panel.style.top = `${startTop - mapRect.top}px`;
+    panel.style.right = '';
+    panel.style.bottom = '';
+    panel.style.maxWidth = 'none';
+    panel.style.maxHeight = 'none';
+
+    const onMove = (moveEvent: PointerEvent): void => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      const maxHeight = Math.max(minHeight, mapRect.bottom - startTop - EDGE_MARGIN);
+      const nextHeight = Math.max(minHeight, Math.min(startHeight + dy, maxHeight));
+
+      let nextWidth: number;
+      let nextLeft = startLeft;
+      if (side === 'right') {
+        const maxWidth = Math.max(minWidth, mapRect.right - rect.left - EDGE_MARGIN);
+        nextWidth = Math.max(minWidth, Math.min(startWidth + dx, maxWidth));
+      } else {
+        const maxWidth = Math.max(minWidth, startRight - mapRect.left - EDGE_MARGIN);
+        nextWidth = Math.max(minWidth, Math.min(startWidth - dx, maxWidth));
+        // Hold the right edge fixed while the left edge follows the drag.
+        nextLeft = startLeft + (startWidth - nextWidth);
       }
-      document.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerup', onPointerUp);
+
+      panel.style.width = `${nextWidth}px`;
+      panel.style.height = `${nextHeight}px`;
+      panel.style.left = `${nextLeft}px`;
+      this._userPanelWidth = nextWidth;
+      this._userPanelHeight = nextHeight;
     };
 
-    const onPointerDown = (e: PointerEvent): void => {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = panel.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      startWidth = rect.width;
-      startHeight = rect.height;
-      // Handle on a *-left corner means the panel is anchored to the right;
-      // a top-* corner means it is anchored to the bottom.
-      anchorRight =
-        handle.classList.contains('corner-bottom-left') ||
-        handle.classList.contains('corner-top-left');
-      anchorBottom =
-        handle.classList.contains('corner-top-left') ||
-        handle.classList.contains('corner-top-right');
-      try {
-        handle.setPointerCapture(e.pointerId);
-      } catch {
-        // ignore - capture is best-effort
-      }
-      document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
+    const cleanup = (): void => {
+      handle.releasePointerCapture?.(event.pointerId);
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', cleanup);
+      handle.removeEventListener('pointercancel', cleanup);
+      this._panelResizeCleanup = null;
     };
 
-    handle.addEventListener('pointerdown', onPointerDown);
-    this._panelResizeCleanup = (): void => {
-      handle.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerup', onPointerUp);
-    };
+    handle.setPointerCapture?.(event.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', cleanup);
+    handle.addEventListener('pointercancel', cleanup);
+    this._panelResizeCleanup = cleanup;
   }
 
   /**

@@ -5,8 +5,10 @@ type ControlInternals = {
   _container: HTMLElement;
   _panel: HTMLElement;
   _mapContainer: HTMLElement;
+  _userPanelWidth: number | null;
   _userPanelHeight: number | null;
   _updatePanelPosition(): void;
+  _addResizeHandles(panel: HTMLElement): void;
 };
 
 /**
@@ -74,5 +76,68 @@ describe('LidarControl resize handle reducibility', () => {
     internals._userPanelHeight = 400;
     internals._updatePanelPosition();
     expect(panel.style.height).toBe('400px');
+  });
+});
+
+describe('LidarControl bottom-corner resize handles', () => {
+  /** Simulates a pointer drag on a handle from one screen point to another. */
+  function dragHandle(
+    handle: HTMLElement,
+    from: { x: number; y: number },
+    to: { x: number; y: number }
+  ) {
+    const make = (type: string, x: number, y: number) =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }) as unknown as PointerEvent;
+    handle.dispatchEvent(make('pointerdown', from.x, from.y));
+    handle.dispatchEvent(make('pointermove', to.x, to.y));
+    handle.dispatchEvent(make('pointerup', to.x, to.y));
+  }
+
+  it('creates exactly two handles, one in each bottom corner', () => {
+    const { panel, internals } = setupControl();
+    internals._addResizeHandles(panel);
+
+    const handles = panel.querySelectorAll('.lidar-control-resize-handle');
+    expect(handles.length).toBe(2);
+    expect(panel.querySelector('.lidar-control-resize-left')).not.toBeNull();
+    expect(panel.querySelector('.lidar-control-resize-right')).not.toBeNull();
+    // The legacy single adaptive handle (corner-* classes) is gone.
+    expect(panel.querySelector('.corner-bottom-left')).toBeNull();
+    expect(panel.querySelector('.corner-bottom-right')).toBeNull();
+  });
+
+  it('grows and shrinks the panel when dragging the bottom-right handle', () => {
+    const { panel, internals } = setupControl();
+    internals._addResizeHandles(panel);
+    // Panel near the top-left of the map so there is room to grow rightward:
+    // 300px wide, 200px tall.
+    panel.getBoundingClientRect = () =>
+      ({ top: 45, bottom: 245, left: 50, right: 350, width: 300, height: 200 }) as DOMRect;
+    const right = panel.querySelector('.lidar-control-resize-right') as HTMLElement;
+
+    // Drag down-right: the panel grows wider and taller.
+    dragHandle(right, { x: 350, y: 245 }, { x: 500, y: 400 });
+    expect(internals._userPanelWidth).toBeGreaterThan(300);
+    expect(internals._userPanelHeight).toBeGreaterThan(200);
+
+    // Drag back up-left from the new bottom-right corner: it shrinks again.
+    panel.getBoundingClientRect = () =>
+      ({ top: 45, bottom: 400, left: 50, right: 500, width: 450, height: 355 }) as DOMRect;
+    dragHandle(right, { x: 500, y: 400 }, { x: 250, y: 100 });
+    expect(internals._userPanelWidth).toBeLessThan(450);
+    expect(internals._userPanelHeight).toBeLessThan(355);
+  });
+
+  it('grows the panel leftward when dragging the bottom-left handle', () => {
+    const { panel, internals } = setupControl();
+    internals._addResizeHandles(panel);
+    panel.getBoundingClientRect = () =>
+      ({ top: 45, bottom: 245, left: 630, right: 995, width: 365, height: 200 }) as DOMRect;
+    const left = panel.querySelector('.lidar-control-resize-left') as HTMLElement;
+
+    // Dragging the bottom-left handle leftward widens the panel.
+    dragHandle(left, { x: 630, y: 245 }, { x: 400, y: 400 });
+    expect(internals._userPanelWidth).toBeGreaterThan(365);
+    expect(internals._userPanelHeight).toBeGreaterThan(200);
   });
 });

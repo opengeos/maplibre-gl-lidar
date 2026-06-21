@@ -308,11 +308,12 @@
   display: flex;
 }
 
-/* Resize handle - sits at the panel corner opposite its map anchor so the
-   anchored corner stays put while dragging. The corner (and cursor) is set
-   from JS via the corner-* modifier classes. */
+/* Resize handles - one fixed in each bottom corner. The bottom-right handle
+   grows the panel rightward, the bottom-left handle leftward; both grow it
+   downward. */
 .lidar-control-resize-handle {
   position: absolute;
+  bottom: 0;
   width: 16px;
   height: 16px;
   z-index: 3;
@@ -322,51 +323,37 @@
 .lidar-control-resize-handle::after {
   content: '';
   position: absolute;
-  inset: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-color: var(--lidar-resize-grip);
+  border-style: solid;
+  opacity: 0.7;
 }
 
-.lidar-control-resize-handle.corner-bottom-right {
+.lidar-control-resize-handle:hover::after {
+  border-color: var(--lidar-resize-grip-hover);
+  opacity: 1;
+}
+
+.lidar-control-resize-right {
   right: 0;
-  bottom: 0;
   cursor: nwse-resize;
 }
 
-.lidar-control-resize-handle.corner-bottom-right::after {
-  background: linear-gradient(135deg, transparent 50%, var(--lidar-resize-grip) 50%, var(--lidar-resize-grip) 62%, transparent 62%, transparent 74%, var(--lidar-resize-grip) 74%, var(--lidar-resize-grip) 86%, transparent 86%);
+.lidar-control-resize-right::after {
+  right: 3px;
+  border-width: 0 2px 2px 0;
 }
 
-.lidar-control-resize-handle.corner-bottom-left {
+.lidar-control-resize-left {
   left: 0;
-  bottom: 0;
   cursor: nesw-resize;
 }
 
-.lidar-control-resize-handle.corner-bottom-left::after {
-  background: linear-gradient(225deg, transparent 50%, var(--lidar-resize-grip) 50%, var(--lidar-resize-grip) 62%, transparent 62%, transparent 74%, var(--lidar-resize-grip) 74%, var(--lidar-resize-grip) 86%, transparent 86%);
-}
-
-.lidar-control-resize-handle.corner-top-right {
-  right: 0;
-  top: 0;
-  cursor: nesw-resize;
-}
-
-.lidar-control-resize-handle.corner-top-right::after {
-  background: linear-gradient(45deg, transparent 50%, var(--lidar-resize-grip) 50%, var(--lidar-resize-grip) 62%, transparent 62%, transparent 74%, var(--lidar-resize-grip) 74%, var(--lidar-resize-grip) 86%, transparent 86%);
-}
-
-.lidar-control-resize-handle.corner-top-left {
-  left: 0;
-  top: 0;
-  cursor: nwse-resize;
-}
-
-.lidar-control-resize-handle.corner-top-left::after {
-  background: linear-gradient(315deg, transparent 50%, var(--lidar-resize-grip) 50%, var(--lidar-resize-grip) 62%, transparent 62%, transparent 74%, var(--lidar-resize-grip) 74%, var(--lidar-resize-grip) 86%, transparent 86%);
-}
-
-.lidar-control-resize-handle:hover {
-  filter: contrast(1.6);
+.lidar-control-resize-left::after {
+  left: 3px;
+  border-width: 0 0 2px 2px;
 }
 
 /* Panel header */
