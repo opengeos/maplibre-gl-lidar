@@ -73,6 +73,16 @@ map.on('load', () => {
       percentileLow: 2,            // Lower percentile bound (default: 2)
       percentileHigh: 98,          // Upper percentile bound (default: 98)
     },
+    // Offer the sample as an opt-in "Load sample data" dropdown instead of
+    // auto-loading; the URL input stays empty until the user picks one.
+    sampleData: [
+      {
+        label: 'Autzen',
+        url: 'https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz',
+      },
+    ],
+    // Keep the panel open until the close button is clicked.
+    closeOnOutsideClick: false,
     // copcLoadingMode: 'dynamic',  // Auto-detected for COPC URLs, use 'full' to force download
     // streamingPointBudget: 5_000_000  // Max points in memory for streaming mode
     // maxHeight: 500,
@@ -92,11 +102,6 @@ map.on('load', () => {
 
   // Add LidarControl after LayerControl
   map.addControl(lidarControl, 'top-left');
-
-
-
-  // Load a point cloud programmatically
-  lidarControl.loadPointCloud('https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz');
 
   // Listen for point cloud load events
   lidarControl.on('load', (event) => {

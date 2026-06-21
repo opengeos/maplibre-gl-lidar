@@ -108,3 +108,43 @@ describe('PanelBuilder share URL button', () => {
     expect(panel.querySelector('.lidar-share-status')?.textContent).toBe('Copy failed');
   });
 });
+
+describe('PanelBuilder sample-data dropdown', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      value: vi.fn(() => ({
+        createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+        fillRect: vi.fn(),
+        fillStyle: '',
+      })),
+      configurable: true,
+    });
+  });
+
+  it('renders no dropdown when no samples are configured', () => {
+    const panel = new PanelBuilder(createCallbacks(), createState()).build();
+    expect(panel.querySelector('.lidar-sample-menu')).toBeNull();
+  });
+
+  it('renders a dropdown that fills the URL input on selection', () => {
+    const panel = new PanelBuilder(createCallbacks(), createState(), {
+      sampleData: [
+        { label: 'Autzen', url: 'https://example.com/autzen.copc.laz' },
+        { label: 'Montreal', url: 'https://example.com/montreal.copc.laz' },
+      ],
+    }).build();
+
+    const trigger = panel.querySelector('.lidar-sample-trigger') as HTMLButtonElement;
+    expect(
+      trigger.querySelector('.lidar-sample-trigger-label')?.textContent,
+    ).toBe('Load sample data...');
+    const urlInput = panel.querySelector('.lidar-control-input') as HTMLInputElement;
+    expect(urlInput.value).toBe('');
+
+    const options = [...panel.querySelectorAll('.lidar-sample-option')];
+    expect(options.map((o) => o.textContent)).toEqual(['Autzen', 'Montreal']);
+
+    (options[1] as HTMLButtonElement).click();
+    expect(urlInput.value).toBe('https://example.com/montreal.copc.laz');
+  });
+});

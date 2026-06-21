@@ -519,6 +519,92 @@
   box-shadow: 0 0 0 2px var(--lidar-accent-ring);
 }
 
+/* Sample-data dropdown (custom, so the menu themes correctly in dark mode) */
+.lidar-sample-dropdown {
+  position: relative;
+}
+
+.lidar-sample-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  border: 1px solid var(--lidar-border-input);
+  border-radius: 4px;
+  background: var(--lidar-bg);
+  color: var(--lidar-text-muted);
+  cursor: pointer;
+  outline: none;
+}
+
+.lidar-sample-trigger:hover,
+.lidar-sample-trigger.open,
+.lidar-sample-trigger:focus-visible {
+  border-color: var(--lidar-accent);
+}
+
+.lidar-sample-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lidar-sample-caret {
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+.lidar-sample-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  box-sizing: border-box;
+  background: var(--lidar-bg);
+  border: 1px solid var(--lidar-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.lidar-sample-menu[hidden] {
+  display: none;
+}
+
+.lidar-sample-option {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--lidar-text);
+  cursor: pointer;
+}
+
+.lidar-sample-option:hover,
+.lidar-sample-option:focus-visible {
+  outline: none;
+  background: var(--lidar-hover);
+}
+
 .lidar-control-select {
   width: 100%;
   padding: 6px 8px;

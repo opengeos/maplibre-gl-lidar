@@ -250,6 +250,9 @@ interface LidarControlOptions {
   panelMaxHeight?: number; // Panel max height with scrollbar (default: 500)
   theme?: 'auto' | 'light' | 'dark'; // Color theme (default: 'auto', follows OS)
   className?: string; // Custom CSS class
+  sampleData?: LidarSampleDataset[]; // Sample point clouds shown as a "Load sample data" dropdown above the URL input (hidden when empty)
+  sampleDataLabel?: string; // Dropdown placeholder (default: 'Load sample data...')
+  closeOnOutsideClick?: boolean; // Collapse on outside click; false keeps the panel open until the close button (default: true)
 
   // Point cloud styling
   pointSize?: number; // Point size in pixels (default: 2)

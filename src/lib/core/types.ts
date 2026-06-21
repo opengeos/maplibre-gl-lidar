@@ -281,6 +281,37 @@ export interface LidarControlOptions {
    * @default 150
    */
   streamingViewportDebounceMs?: number;
+
+  /**
+   * Sample point clouds offered as a "Load sample data" dropdown above the
+   * URL input; picking one fills the input. Omit or leave empty to hide the
+   * dropdown, so the input stays clean for the user's own URLs.
+   */
+  sampleData?: LidarSampleDataset[];
+
+  /**
+   * Placeholder shown in the sample-data dropdown before a selection.
+   * @default 'Load sample data...'
+   */
+  sampleDataLabel?: string;
+
+  /**
+   * Collapse the panel when the user clicks outside it (e.g. on the map).
+   * Set to `false` to keep the panel open until the close button is used.
+   * @default true
+   */
+  closeOnOutsideClick?: boolean;
+}
+
+/**
+ * A named sample point cloud offered as a one-click entry in the panel's
+ * "Load sample data" dropdown. Picking it fills the URL input.
+ */
+export interface LidarSampleDataset {
+  /** Label shown in the dropdown (e.g. 'Autzen'). */
+  label: string;
+  /** Point cloud URL filled into the input when this entry is picked. */
+  url: string;
 }
 
 /**

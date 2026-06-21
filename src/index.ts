@@ -26,6 +26,7 @@ export { LidarLayerAdapter } from './lib/adapters';
 // Type exports
 export type {
   LidarControlOptions,
+  LidarSampleDataset,
   LidarState,
   LidarControlEvent,
   LidarControlEventHandler,
