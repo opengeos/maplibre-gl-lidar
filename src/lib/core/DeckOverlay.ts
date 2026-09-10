@@ -1,4 +1,4 @@
-import { MapboxOverlay } from '@deck.gl/mapbox';
+import { MapLibreOverlay } from '@deck.gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Layer } from '@deck.gl/core';
 
@@ -8,18 +8,18 @@ import type { Layer } from '@deck.gl/core';
  */
 export class DeckOverlay {
   private _map: MapLibreMap;
-  private _overlay: MapboxOverlay;
+  private _overlay: MapLibreOverlay;
   private _layers: Map<string, Layer>;
 
   constructor(map: MapLibreMap) {
     this._map = map;
     this._layers = new Map();
-    this._overlay = new MapboxOverlay({
+    this._overlay = new MapLibreOverlay({
       interleaved: false, // Use non-interleaved mode for better compatibility
       layers: [],
     });
-    // Add the overlay as a control (compatible with MapLibre)
-    this._map.addControl(this._overlay as unknown as maplibregl.IControl);
+    // MapLibreOverlay implements MapLibre's IControl, so no cast is needed.
+    this._map.addControl(this._overlay);
   }
 
   /**
@@ -98,7 +98,7 @@ export class DeckOverlay {
   destroy(): void {
     this._layers.clear();
     try {
-      this._map.removeControl(this._overlay as unknown as maplibregl.IControl);
+      this._map.removeControl(this._overlay);
     } catch {
       // Ignore errors if already removed
     }
