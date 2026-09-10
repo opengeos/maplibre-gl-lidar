@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { LidarControl, LidarLayerAdapter } from '../../src/index';
 import { LayerControl } from 'maplibre-gl-layer-control';
 import '../../src/index.css';

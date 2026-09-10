@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import maplibregl, { Map } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { Map } from 'maplibre-gl';
 import { LidarControlReact, useLidarState, LidarLayerAdapter } from '../../src/react';
 import type { PointCloudInfo, LidarState, LidarControl } from '../../src/react';
 import { LayerControl } from 'maplibre-gl-layer-control';
