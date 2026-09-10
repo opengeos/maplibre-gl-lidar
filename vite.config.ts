@@ -67,7 +67,7 @@ export default defineConfig({
         'maplibre-gl',
         '@deck.gl/core',
         '@deck.gl/layers',
-        '@deck.gl/mapbox',
+        '@deck.gl/maplibre',
         '@deck.gl/extensions',
       ],
       output: {
