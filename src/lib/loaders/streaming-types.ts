@@ -12,7 +12,7 @@ export type CopcLoadingMode = 'full' | 'dynamic';
 export type NodeKey = [number, number, number, number];
 
 /**
- * Streaming loader options
+ * Streaming loader options with range request caching support
  */
 export interface StreamingLoaderOptions {
   /**
@@ -51,6 +51,27 @@ export interface StreamingLoaderOptions {
    * @default 60
    */
   maxSubtreesPerViewport?: number;
+
+  /**
+   * Enable HTTP range request caching to avoid re-fetching overlapping ranges
+   * Dramatically improves performance by caching byte ranges locally
+   * @default true
+   */
+  enableRangeCache?: boolean;
+
+  /**
+   * Maximum size of the range request cache in bytes
+   * Cached blocks are merged when adjacent to reduce fragmentation
+   * @default 50 * 1024 * 1024 (50MB)
+   */
+  rangeCacheSize?: number;
+
+  /**
+   * Maximum gap between blocks (in bytes) before merging
+   * Reduces cache fragmentation by coalescing nearby ranges
+   * @default 4 * 1024 (4KB)
+   */
+  rangeCacheMergeThreshold?: number;
 }
 
 /**
