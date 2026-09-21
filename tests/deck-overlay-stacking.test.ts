@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { DECK_CANVAS_CLASS, DeckOverlay } from '../src/lib/core/DeckOverlay';
+// Imported through the package entry point: DECK_CANVAS_CLASS is the styling
+// hook a host needs, so it has to be reachable from there, not just internally.
+import { DECK_CANVAS_CLASS, DeckOverlay } from '../src/index';
 
 vi.mock('@deck.gl/maplibre', () => {
   class MapLibreOverlay {
