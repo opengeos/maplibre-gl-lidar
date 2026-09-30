@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PointCloudData } from '../src/index';
-import { CopcStreamingLoader, PointCloudManager } from '../src/index';
+import { CopcStreamingLoader, EptStreamingLoader, PointCloudManager } from '../src/index';
 import type { DeckOverlay } from '../src/lib/core/DeckOverlay';
 
 vi.mock('@deck.gl/maplibre', () => ({ MapLibreOverlay: class {} }));
@@ -104,5 +104,79 @@ describe('DeckOverlay.getViewport', () => {
     const { join } = await import('node:path');
     const overlayPath = join(process.cwd(), 'node_modules/@deck.gl/maplibre/dist/overlay.js');
     expect(readFileSync(overlayPath, 'utf8')).toMatch(/const deck = this\._deck;/);
+  });
+});
+
+type QueueInternals = {
+  _loadingQueue: { key: string; pointCount: number }[];
+  _activeRequests: number;
+  _loadNode: (node: { key: string }) => Promise<void>;
+};
+
+describe.each([
+  ['COPC', () => new CopcStreamingLoader('https://example.com/a.copc.laz')],
+  ['EPT', () => new EptStreamingLoader('https://example.com/ept.json')],
+])('%s pause with a request in flight', (_name, create) => {
+  it('lets the in-flight request finish without starting the next queued node', async () => {
+    const loader = create();
+    const internals = loader as unknown as QueueInternals;
+    const started: string[] = [];
+    let finishFirst!: () => void;
+    // Mirrors _loadNode: count the request, and drain the queue when it ends.
+    internals._loadNode = async (node) => {
+      started.push(node.key);
+      internals._activeRequests++;
+      try {
+        if (node.key === 'a') await new Promise<void>((resolve) => (finishFirst = resolve));
+      } finally {
+        internals._activeRequests--;
+        void loader.loadQueuedNodes();
+      }
+    };
+    internals._loadingQueue = [
+      { key: 'a', pointCount: 1 },
+      { key: 'b', pointCount: 1 },
+    ];
+    // Allow one request at a time so 'b' stays queued behind 'a'.
+    (loader as unknown as { _options: { maxConcurrentRequests: number } })._options.maxConcurrentRequests = 1;
+    void loader.loadQueuedNodes();
+    expect(started).toEqual(['a']);
+    loader.setPaused(true);
+    finishFirst();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(started).toEqual(['a']);
+    loader.setPaused(false);
+    await loader.loadQueuedNodes();
+    expect(started).toEqual(['a', 'b']);
+  });
+});
+
+describe('EPT failed-reservation reclaim', () => {
+  it('compacts later nodes over a failed node once no request is in flight', () => {
+    const loader = new EptStreamingLoader('https://example.com/ept.json');
+    const internals = loader as unknown as {
+      _nodeCache: Map<string, unknown>;
+      _positions: Float32Array;
+      _intensities: Float32Array;
+      _classifications: Uint8Array;
+      _totalLoadedPoints: number;
+      _hasReservationGaps: boolean;
+      _reclaimFailedReservations: () => boolean;
+      _scheduleLayerUpdate: () => void;
+    };
+    internals._positions = new Float32Array(6 * 3);
+    internals._intensities = new Float32Array(6);
+    internals._classifications = Uint8Array.from([0, 0, 0, 6, 6, 0]);
+    internals._scheduleLayerUpdate = () => {};
+    // Node A (0-2) failed; node B holds indices 3-4.
+    internals._nodeCache.set('b', { key: 'b', state: 'loaded', bufferStartIndex: 3, pointCount: 2 });
+    internals._totalLoadedPoints = 5;
+    internals._hasReservationGaps = true;
+    loader.setPaused(true);
+    expect(internals._reclaimFailedReservations()).toBe(false);
+    loader.setPaused(false);
+    expect(internals._totalLoadedPoints).toBe(2);
+    expect([...internals._classifications.subarray(0, 2)]).toEqual([6, 6]);
+    expect(loader.getLoadedNodeRanges()).toEqual([{ key: 'b', start: 0, count: 2 }]);
   });
 });

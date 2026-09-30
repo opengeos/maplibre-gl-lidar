@@ -223,6 +223,7 @@ export class EptStreamingLoader {
   private _loadingQueue: EptCachedNode[] = [];
   private _activeRequests: number = 0;
   private _paused = false;
+  private _hasReservationGaps = false;
   private _totalLoadedPoints: number = 0;
   private _totalLoadedNodes: number = 0;
   private _isInitialized: boolean = false;
@@ -806,6 +807,7 @@ export class EptStreamingLoader {
    */
   setPaused(paused: boolean): void {
     this._paused = paused;
+    if (!paused) this._reclaimFailedReservations();
   }
 
   /** Whether node dispatch is paused by {@link setPaused}. */
@@ -882,10 +884,13 @@ export class EptStreamingLoader {
       this._scheduleLayerUpdate();
     } catch (error) {
       // Release the reserved space only when no later node has reserved after
-      // it: otherwise a later node could be handed an overlapping range. An
-      // unreleased gap simply holds no loaded point (it is in no node range).
+      // it: otherwise a later node could be handed an overlapping range. A gap
+      // left behind is reclaimed once no request is in flight
+      // (_reclaimFailedReservations).
       if (node.bufferStartIndex !== undefined && node.bufferStartIndex + reservedPoints === this._totalLoadedPoints) {
         this._totalLoadedPoints -= reservedPoints;
+      } else {
+        this._hasReservationGaps = true;
       }
       node.bufferStartIndex = undefined;
 
@@ -911,8 +916,43 @@ export class EptStreamingLoader {
       }
     } finally {
       this._activeRequests--;
+      this._reclaimFailedReservations();
       this.loadQueuedNodes();
     }
+  }
+
+  /**
+   * Closes the gaps failed node requests left in the buffers by moving later
+   * nodes down, once no request is in flight (so no reservation can move under
+   * a writer). Skipped while paused, when callers rely on indices staying put.
+   *
+   * @returns True when the buffers were compacted
+   */
+  private _reclaimFailedReservations(): boolean {
+    if (!this._hasReservationGaps || this._activeRequests > 0 || this._paused) return false;
+    const loaded = [...this._nodeCache.values()]
+      .filter((node) => node.state === 'loaded' && node.bufferStartIndex !== undefined)
+      .sort((a, b) => a.bufferStartIndex! - b.bufferStartIndex!);
+    let next = 0;
+    for (const node of loaded) {
+      const from = node.bufferStartIndex!;
+      if (from !== next) {
+        const count = node.pointCount;
+        this._positions!.copyWithin(next * 3, from * 3, (from + count) * 3);
+        this._intensities!.copyWithin(next, from, from + count);
+        this._classifications!.copyWithin(next, from, from + count);
+        this._colors?.copyWithin(next * 4, from * 4, (from + count) * 4);
+        for (const arr of Object.values(this._extraAttributes)) {
+          arr.copyWithin(next, from, from + count);
+        }
+        node.bufferStartIndex = next;
+      }
+      next += node.pointCount;
+    }
+    this._totalLoadedPoints = next;
+    this._hasReservationGaps = false;
+    this._scheduleLayerUpdate();
+    return true;
   }
 
   /**
