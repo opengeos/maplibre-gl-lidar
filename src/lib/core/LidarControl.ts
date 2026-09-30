@@ -659,6 +659,43 @@ export class LidarControl implements IControl {
   }
 
   /**
+   * Loads a region of a streamed COPC cloud at full resolution: every octree
+   * node intersecting `bounds`, at every depth, pinned so level-of-detail
+   * streaming never evicts it. Use it to annotate or measure an area at the
+   * data's full density whatever the zoom. Works while streaming is paused
+   * (points are only appended); nodes outside the region are evicted first
+   * when needed and streaming is not paused.
+   *
+   * @param id - Point cloud id
+   * @param bounds - `[west, south, east, north]` in WGS84 degrees
+   * @param options - `maxPoints` caps the region's size (default: the point budget)
+   * @returns The region's node and point counts
+   * @throws Error for a cloud that is not a streamed COPC, or a region that
+   *   holds too many points
+   */
+  async loadRegion(
+    id: string,
+    bounds: [number, number, number, number],
+    options: { maxPoints?: number } = {}
+  ): Promise<{ nodes: number; points: number }> {
+    const loader = this._streamingLoaders.get(id);
+    if (!loader) {
+      throw new Error('Only a streamed COPC point cloud can load a region at full resolution.');
+    }
+    return loader.loadRegion(bounds, options);
+  }
+
+  /**
+   * Unpins the region loaded by {@link loadRegion}, so its nodes stream (and
+   * are evicted) like any others.
+   *
+   * @param id - Point cloud id
+   */
+  clearPinnedRegion(id: string): void {
+    this._streamingLoaders.get(id)?.clearPinnedRegion();
+  }
+
+  /**
    * Whether a streamed cloud still has node requests queued or in flight.
    *
    * @param id - Point cloud id
@@ -1707,7 +1744,8 @@ export class LidarControl implements IControl {
       const needsCoverage = coverageRatio < 0.5;
       const hasPendingWork = nodesToLoad.length > 0;
 
-      if (budgetReached && needsCoverage && hasPendingWork) {
+      // A pinned region is kept loaded; never reset it away for coverage.
+      if (budgetReached && needsCoverage && hasPendingWork && !streamingLoader.hasPinnedRegion()) {
         resetSucceeded = streamingLoader.resetLoadedData();
         if (!resetSucceeded) {
           setTimeout(() => {

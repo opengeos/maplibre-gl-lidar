@@ -260,6 +260,10 @@ export class CopcStreamingLoader {
   private _loadingQueue: CachedNode[] = [];
   private _activeRequests: number = 0;
   private _paused = false;
+  /** Nodes kept by {@link loadRegion}: never evicted or reset. */
+  private _pinnedKeys: Set<string> = new Set();
+  /** True while {@link loadRegion} owns the buffers' free space. */
+  private _regionLoading = false;
   private _totalLoadedPoints: number = 0;
   private _totalLoadedNodes: number = 0;
   private _isInitialized: boolean = false;
@@ -755,7 +759,9 @@ export class CopcStreamingLoader {
    * Loads nodes from the queue, respecting point budget and concurrency limits.
    */
   async loadQueuedNodes(): Promise<void> {
-    if (this._paused) return;
+    // A region load has sized its request against the free buffer space;
+    // viewport nodes wait until it finishes.
+    if (this._paused || this._regionLoading) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&
@@ -805,16 +811,41 @@ export class CopcStreamingLoader {
   evictLoadedNodesOutsideViewport(viewport: ViewportInfo): boolean {
     // Evicting compacts the buffers, which a paused caller relies on not happening.
     if (this._paused) return false;
-    if (this._activeRequests > 0) return false;
+    if (this._activeRequests > 0 || this._regionLoading) return false;
 
     const loadedNodes = Array.from(this._nodeCache.values())
       .filter((node) => node.state === 'loaded' && node.bufferStartIndex !== undefined);
     if (loadedNodes.length === 0) return true;
 
-    const keepNodes = loadedNodes
-      .filter((node) => this._boundsIntersectsViewport(node.boundsWgs84, viewport))
+    return this._compactKeeping(
+      new Set(
+        loadedNodes
+          .filter(
+            (node) =>
+              this._pinnedKeys.has(node.key) ||
+              this._boundsIntersectsViewport(node.boundsWgs84, viewport)
+          )
+          .map((node) => node.key)
+      )
+    );
+  }
+
+  /**
+   * Keeps the given loaded nodes, compacting them to the start of the
+   * buffers, and returns every other loaded node to `pending`.
+   *
+   * @param keepNodeKeys - Keys of the loaded nodes to keep
+   * @returns True (compaction always completes once no request is active)
+   */
+  private _compactKeeping(keepNodeKeys: Set<string>): boolean {
+    const keepNodes = Array.from(this._nodeCache.values())
+      .filter(
+        (node) =>
+          node.state === 'loaded' &&
+          node.bufferStartIndex !== undefined &&
+          keepNodeKeys.has(node.key)
+      )
       .sort((a, b) => a.bufferStartIndex! - b.bufferStartIndex!);
-    const keepNodeKeys = new Set(keepNodes.map((node) => node.key));
 
     let nextStart = 0;
     for (const node of keepNodes) {
@@ -855,7 +886,8 @@ export class CopcStreamingLoader {
    * @returns True if reset completed, or false if active requests are still writing buffers
    */
   resetLoadedData(): boolean {
-    if (this._activeRequests > 0) return false;
+    if (this._activeRequests > 0 || this._regionLoading) return false;
+    this._pinnedKeys.clear();
 
     this._loadingQueue = [];
     this._totalLoadedPoints = 0;
@@ -873,6 +905,102 @@ export class CopcStreamingLoader {
     this._emit('progress', this._getProgressEvent());
     this._scheduleLayerUpdate();
     return true;
+  }
+
+  /** Whether a region loaded by {@link loadRegion} is pinned. */
+  hasPinnedRegion(): boolean {
+    return this._pinnedKeys.size > 0;
+  }
+
+  /**
+   * Unpins the region loaded by {@link loadRegion}; its nodes become ordinary
+   * streamed nodes again (evicted when they leave the view).
+   */
+  clearPinnedRegion(): void {
+    this._pinnedKeys.clear();
+  }
+
+  /**
+   * Loads every node that intersects a region, at every octree depth, and
+   * pins them so viewport streaming never evicts them: the region is held at
+   * full resolution (e.g. for annotation), whatever the zoom. Loads even while
+   * paused, since it only appends to the buffers.
+   *
+   * When the region does not fit in the free buffer space, nodes outside it
+   * are evicted first, unless streaming is paused (eviction would move the
+   * loaded points), in which case it throws.
+   *
+   * @param bounds - `[west, south, east, north]` in WGS84 degrees
+   * @param options - `maxPoints` caps the region's size (default: the point budget)
+   * @returns The region's node and point counts
+   * @throws Error when the region holds more points than allowed or fits, or
+   *   another region is still loading
+   */
+  async loadRegion(
+    bounds: [number, number, number, number],
+    options: { maxPoints?: number } = {}
+  ): Promise<{ nodes: number; points: number }> {
+    if (!this._isInitialized) {
+      throw new Error('CopcStreamingLoader not initialized. Call initialize() first.');
+    }
+    if (this._regionLoading) throw new Error('A region is already loading.');
+    await this._ensureHierarchyLoaded('0-0-0-0');
+    const [west, south, east, north] = bounds;
+    const region = Array.from(this._nodeCache.values()).filter(
+      (node) =>
+        node.pointCount > 0 &&
+        !(
+          node.boundsWgs84.maxX < west ||
+          node.boundsWgs84.minX > east ||
+          node.boundsWgs84.maxY < south ||
+          node.boundsWgs84.minY > north
+        )
+    );
+    const total = region.reduce((sum, node) => sum + node.pointCount, 0);
+    const limit = Math.min(options.maxPoints ?? Infinity, this._options.pointBudget);
+    if (total > limit) {
+      throw new Error(
+        `The region holds ${total} points, more than the ${limit} allowed; choose a smaller area.`
+      );
+    }
+    const regionKeys = new Set(region.map((node) => node.key));
+    this._regionLoading = true;
+    try {
+      // Let requests already writing the buffers finish before sizing ours.
+      while (this._activeRequests > 0) await new Promise((r) => setTimeout(r, 50));
+      const pending = region.filter((node) => node.state !== 'loaded');
+      const needed = pending.reduce((sum, node) => sum + node.pointCount, 0);
+      if (this._totalLoadedPoints + needed > this._options.pointBudget) {
+        if (this._paused) {
+          throw new Error(
+            `The region needs ${needed} more points but only ${
+              this._options.pointBudget - this._totalLoadedPoints
+            } fit while streaming is paused.`
+          );
+        }
+        // Evict everything outside the region (previous pins included).
+        this._compactKeeping(regionKeys);
+      }
+      this._pinnedKeys = regionKeys;
+      this._loadingQueue = this._loadingQueue.filter((node) => !regionKeys.has(node.key));
+      for (const node of pending) {
+        if (node.state === 'error') node.state = 'pending';
+      }
+      let next = 0;
+      const worker = async () => {
+        while (next < pending.length) {
+          const node = pending[next++];
+          if (node.state === 'pending') await this._loadNode(node);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.max(1, this._options.maxConcurrentRequests) }, worker)
+      );
+    } finally {
+      this._regionLoading = false;
+      void this.loadQueuedNodes();
+    }
+    return { nodes: region.length, points: total };
   }
 
   /**

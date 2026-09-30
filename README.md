@@ -546,6 +546,16 @@ control.loadPointCloud(url, { loadingMode: "dynamic" }); // Force streaming
 
 **Note:** Non-COPC files (regular LAS/LAZ) always use full loading mode since they don't have the octree structure required for streaming.
 
+**Full detail for an area:** `loadRegion` loads every octree node intersecting a bounding box, at every depth, and pins it so viewport streaming never evicts it. The area is then held at the data's full density whatever the zoom, which suits annotation or measurement. It also works while streaming is paused (see `pauseStreaming`), since it only appends points; when streaming is running and the area does not fit in the point budget, nodes outside it are evicted first.
+
+```typescript
+// [west, south, east, north] in WGS84; refuses areas larger than maxPoints.
+const { nodes, points } = await control.loadRegion(cloudId, [-123.074, 44.054, -123.065, 44.059], {
+  maxPoints: 4_000_000,
+});
+control.clearPinnedRegion(cloudId); // let the area stream normally again
+```
+
 ### EPT (Entwine Point Tile) Support
 
 maplibre-gl-lidar supports [Entwine Point Tile (EPT)](https://entwine.io/en/latest/entwine-point-tile.html) datasets, a widely-used format for serving large point clouds over HTTP with viewport-based streaming.
