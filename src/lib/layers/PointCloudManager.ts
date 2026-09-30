@@ -47,6 +47,7 @@ export class PointCloudManager {
       elevationRange: options.elevationRange ?? null,
       pickable: options.pickable ?? false,
       zOffset: options.zOffset ?? 0,
+      classificationStyles: options.classificationStyles,
       onHover: options.onHover,
     };
   }

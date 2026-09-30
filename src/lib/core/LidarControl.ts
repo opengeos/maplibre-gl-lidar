@@ -34,7 +34,11 @@ import {
   createLidarShareUrl,
   parseLidarSharePayloadFromUrl,
 } from '../utils/share-url';
-import { getAvailableClassifications, type ClassificationStyles } from '../colorizers/ColorScheme';
+import {
+  getAvailableClassifications,
+  getClassificationName,
+  type ClassificationStyles,
+} from '../colorizers/ColorScheme';
 
 /**
  * Default options for the LidarControl
@@ -97,6 +101,21 @@ type EventHandlersMap = globalThis.Map<LidarControlEvent, Set<LidarControlEventH
  * await lidarControl.loadPointCloud('https://example.com/pointcloud.laz');
  * ```
  */
+/**
+ * Escapes text for insertion into HTML.
+ *
+ * @param text - Untrusted text
+ * @returns The text with HTML special characters escaped
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export class LidarControl implements IControl {
   private _map?: MapLibreMap;
   private _mapContainer?: HTMLElement;
@@ -214,6 +233,7 @@ export class LidarControl implements IControl {
       elevationRange: this._state.elevationRange,
       pickable: this._state.pickable,
       zOffset: this._state.zOffset,
+      classificationStyles: this._state.classificationStyles,
       onHover: (info) => this._handlePointHover(info),
     });
 
@@ -547,8 +567,10 @@ export class LidarControl implements IControl {
         ...(style.color ? { color: [style.color[0], style.color[1], style.color[2]] } : {}),
       };
     }
+    // Kept in state even before onAdd; the manager is built with it.
     this._pointCloudManager?.updateStyle({ classificationStyles: copy });
     this.setState({ classificationStyles: copy });
+    this._emit('stylechange');
   }
 
   /**
@@ -557,7 +579,14 @@ export class LidarControl implements IControl {
    * @returns A copy of the styles (empty when none are set)
    */
   getClassificationStyles(): ClassificationStyles {
-    return { ...(this._state.classificationStyles ?? {}) };
+    const copy: ClassificationStyles = {};
+    for (const [code, style] of Object.entries(this._state.classificationStyles ?? {})) {
+      copy[Number(code)] = {
+        ...(style.name ? { name: style.name } : {}),
+        ...(style.color ? { color: [style.color[0], style.color[1], style.color[2]] } : {}),
+      };
+    }
+    return copy;
   }
 
   /**
@@ -2488,30 +2517,7 @@ export class LidarControl implements IControl {
    * Gets the classification name for a code.
    */
   private _getClassificationName(code: number): string {
-    const custom = this._state.classificationStyles?.[code]?.name;
-    if (custom) return custom;
-    const classNames: Record<number, string> = {
-      0: 'Never Classified',
-      1: 'Unassigned',
-      2: 'Ground',
-      3: 'Low Vegetation',
-      4: 'Medium Vegetation',
-      5: 'High Vegetation',
-      6: 'Building',
-      7: 'Low Point',
-      8: 'Reserved',
-      9: 'Water',
-      10: 'Rail',
-      11: 'Road Surface',
-      12: 'Reserved',
-      13: 'Wire - Guard',
-      14: 'Wire - Conductor',
-      15: 'Transmission Tower',
-      16: 'Wire - Connector',
-      17: 'Bridge Deck',
-      18: 'High Noise',
-    };
-    return classNames[code] || `Class ${code}`;
+    return getClassificationName(code, this._state.classificationStyles);
   }
 
   /**
@@ -2557,7 +2563,7 @@ export class LidarControl implements IControl {
 
       // Classification
       if (info.classification !== undefined && this._shouldShowAttribute('Classification')) {
-        html += `<div>Classification: ${this._getClassificationName(info.classification)}</div>`;
+        html += `<div>Classification: ${escapeHtml(this._getClassificationName(info.classification))}</div>`;
       }
 
       // RGB colors
@@ -2576,7 +2582,9 @@ export class LidarControl implements IControl {
         for (const [name, value] of Object.entries(info.attributes)) {
           if (this._shouldShowAttribute(name)) {
             const formattedValue = this._formatAttributeValue(name, value);
-            html += `<div>${name}: ${formattedValue}</div>`;
+            // Attribute names come from the file and class names from the
+            // host, so neither may be trusted as markup.
+            html += `<div>${escapeHtml(name)}: ${escapeHtml(formattedValue)}</div>`;
           }
         }
       }
