@@ -120,13 +120,11 @@ export class DeckOverlay {
   }
 
   /**
-   * Gets the MapLibre map instance.
-   *
-   * @returns The MapLibre map
-   */
-  /**
    * The deck.gl viewport the overlay last rendered with, which matches what
    * is on screen. Use it to project points to pixels (e.g. for selection).
+   *
+   * Reads MapLibreOverlay's private `_deck`; tests/point-editing-api.test.ts
+   * pins it against the installed @deck.gl/maplibre.
    *
    * @returns The viewport, or null before the first render
    */
@@ -135,6 +133,11 @@ export class DeckOverlay {
     return deck?.getViewports?.()[0] ?? null;
   }
 
+  /**
+   * Gets the MapLibre map instance.
+   *
+   * @returns The MapLibre map
+   */
   getMap(): MapLibreMap {
     return this._map;
   }

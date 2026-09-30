@@ -70,3 +70,39 @@ describe('CopcStreamingLoader.getLoadedNodeRanges', () => {
     ]);
   });
 });
+
+describe('streaming pause', () => {
+  it('stops queued node dispatch and eviction while paused', async () => {
+    const loader = new CopcStreamingLoader('https://example.com/a.copc.laz');
+    const internals = loader as unknown as {
+      _loadingQueue: unknown[];
+      _loadNode: (node: unknown) => Promise<void>;
+    };
+    const started: unknown[] = [];
+    internals._loadNode = async (node) => {
+      started.push(node);
+    };
+    internals._loadingQueue = [{ key: '0-0-0-0', pointCount: 1 }];
+    loader.setPaused(true);
+    expect(loader.isPaused()).toBe(true);
+    await loader.loadQueuedNodes();
+    expect(started).toHaveLength(0);
+    expect(
+      loader.evictLoadedNodesOutsideViewport({} as Parameters<typeof loader.evictLoadedNodesOutsideViewport>[0]),
+    ).toBe(false);
+    loader.setPaused(false);
+    await loader.loadQueuedNodes();
+    expect(started).toHaveLength(1);
+  });
+});
+
+describe('DeckOverlay.getViewport', () => {
+  it('relies on a _deck field the installed @deck.gl/maplibre still has', async () => {
+    // getViewport reads MapLibreOverlay's private `_deck`; fail loudly on a
+    // bump that renames it rather than returning null in the field.
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const overlayPath = join(process.cwd(), 'node_modules/@deck.gl/maplibre/dist/overlay.js');
+    expect(readFileSync(overlayPath, 'utf8')).toMatch(/const deck = this\._deck;/);
+  });
+});

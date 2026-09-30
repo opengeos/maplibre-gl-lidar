@@ -222,6 +222,7 @@ export class EptStreamingLoader {
   // Loading state
   private _loadingQueue: EptCachedNode[] = [];
   private _activeRequests: number = 0;
+  private _paused = false;
   private _totalLoadedPoints: number = 0;
   private _totalLoadedNodes: number = 0;
   private _isInitialized: boolean = false;
@@ -796,9 +797,27 @@ export class EptStreamingLoader {
   }
 
   /**
+   * Pauses or resumes node dispatch. While paused no queued node is
+   * requested, so the loaded points stay put; requests already in flight
+   * still complete. Resuming does not drain the queue by itself; call
+   * {@link loadQueuedNodes}.
+   *
+   * @param paused - Whether to pause
+   */
+  setPaused(paused: boolean): void {
+    this._paused = paused;
+  }
+
+  /** Whether node dispatch is paused by {@link setPaused}. */
+  isPaused(): boolean {
+    return this._paused;
+  }
+
+  /**
    * Loads nodes from the queue, respecting point budget and concurrency limits.
    */
   async loadQueuedNodes(): Promise<void> {
+    if (this._paused) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&
@@ -862,8 +881,12 @@ export class EptStreamingLoader {
 
       this._scheduleLayerUpdate();
     } catch (error) {
-      // Release the reserved buffer space on failure
-      this._totalLoadedPoints -= reservedPoints;
+      // Release the reserved space only when no later node has reserved after
+      // it: otherwise a later node could be handed an overlapping range. An
+      // unreleased gap simply holds no loaded point (it is in no node range).
+      if (node.bufferStartIndex !== undefined && node.bufferStartIndex + reservedPoints === this._totalLoadedPoints) {
+        this._totalLoadedPoints -= reservedPoints;
+      }
       node.bufferStartIndex = undefined;
 
       // Track retry count and set cooldown timestamp

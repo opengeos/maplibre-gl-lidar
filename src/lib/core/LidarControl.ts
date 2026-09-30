@@ -523,6 +523,11 @@ export class LidarControl implements IControl {
    * @returns The data, or null when no such cloud is loaded
    */
   getPointCloudData(id: string): PointCloudData | null {
+    // A streamed cloud's buffers can be compacted before the manager receives
+    // the (debounced) update, so read it from the loader: its buffers and
+    // node ranges are always in step.
+    const loader = this._streamingLoaders.get(id) ?? this._eptStreamingLoaders.get(id);
+    if (loader) return loader.getLoadedPointCloudData();
     return this._pointCloudManager?.getPointCloudData(id) ?? null;
   }
 
@@ -532,6 +537,13 @@ export class LidarControl implements IControl {
    */
   refreshPointColors(): void {
     this._pointCloudManager?.refreshColors();
+    // Edited classes may add or remove classification codes.
+    const available = new Set<number>();
+    for (const info of this._state.pointClouds) {
+      const data = this.getPointCloudData(info.id);
+      if (data) for (const code of getAvailableClassifications(data)) available.add(code);
+    }
+    this.setState({ availableClassifications: available });
   }
 
   /**
@@ -542,7 +554,11 @@ export class LidarControl implements IControl {
    */
   getRenderSettings(): { zOffset: number; elevationRange: [number, number] | null } {
     const options = this._pointCloudManager?.getOptions();
-    return { zOffset: options?.zOffset ?? 0, elevationRange: options?.elevationRange ?? null };
+    const range = options?.elevationRange;
+    return {
+      zOffset: options?.zOffset ?? 0,
+      elevationRange: range ? [range[0], range[1]] : null,
+    };
   }
 
   /**
@@ -557,6 +573,14 @@ export class LidarControl implements IControl {
     const manager = this._viewportManagers.get(id);
     if (!manager) return false;
     manager.stop();
+    // Block queued node requests, and invalidate any viewport update (or its
+    // scheduled retry) still in flight, which could otherwise evict or reset.
+    this._streamingLoaders.get(id)?.setPaused(true);
+    this._eptStreamingLoaders.get(id)?.setPaused(true);
+    const requestIds = this._streamingLoaders.has(id)
+      ? this._copcViewportRequestIds
+      : this._eptViewportRequestIds;
+    requestIds.set(id, (requestIds.get(id) ?? 0) + 1);
     return true;
   }
 
@@ -569,8 +593,11 @@ export class LidarControl implements IControl {
   resumeStreaming(id: string): void {
     const manager = this._viewportManagers.get(id);
     if (!manager) return;
+    const loader = this._streamingLoaders.get(id) ?? this._eptStreamingLoaders.get(id);
+    loader?.setPaused(false);
     manager.start();
     manager.forceUpdate();
+    void loader?.loadQueuedNodes();
   }
 
   /**
