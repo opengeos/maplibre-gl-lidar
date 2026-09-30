@@ -52,6 +52,7 @@ export type {
 
 export type {
   PointCloudData,
+  PointNodeRange,
   LoaderOptions,
 } from './lib/loaders/types';
 

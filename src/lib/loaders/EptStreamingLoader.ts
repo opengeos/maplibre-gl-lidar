@@ -16,7 +16,7 @@ import type {
   EptCachedNode,
   ParsedDimension,
 } from './ept-types';
-import type { PointCloudData, ExtraPointAttributes, AttributeArray } from './types';
+import type { PointCloudData, ExtraPointAttributes, AttributeArray, PointNodeRange } from './types';
 import type { PointCloudBounds } from '../core/types';
 
 /**
@@ -1151,6 +1151,23 @@ export class EptStreamingLoader {
   }
 
   /**
+   * The buffer range of every fully loaded node, ascending by start index.
+   * Ranges move when eviction compacts the buffers, so read them afresh with
+   * each {@link getLoadedPointCloudData} rather than caching them.
+   *
+   * @returns One range per loaded node
+   */
+  getLoadedNodeRanges(): PointNodeRange[] {
+    const ranges: PointNodeRange[] = [];
+    for (const node of this._nodeCache.values()) {
+      if (node.state === 'loaded' && node.bufferStartIndex !== undefined) {
+        ranges.push({ key: node.key, start: node.bufferStartIndex, count: node.pointCount });
+      }
+    }
+    return ranges.sort((a, b) => a.start - b.start);
+  }
+
+  /**
    * Gets the current loaded point cloud data for rendering.
    *
    * @returns Current loaded data
@@ -1180,6 +1197,7 @@ export class EptStreamingLoader {
       hasIntensity: this._hasIntensity,
       hasClassification: true,
       wkt: this._metadata?.srs?.wkt,
+      nodeRanges: this.getLoadedNodeRanges(),
     };
   }
 

@@ -12,6 +12,24 @@ export type AttributeArray = Float64Array | Float32Array | Uint32Array | Uint16A
 export type ExtraPointAttributes = Record<string, AttributeArray>;
 
 /**
+ * Where a run of loaded points came from: a contiguous slice of the point
+ * buffers that holds one source node's points in file order. With it a point
+ * has a stable identity, `(key, index - start)`, that survives streaming
+ * reloads and buffer compaction, unlike its buffer index.
+ */
+export interface PointNodeRange {
+  /**
+   * Source node key: a COPC/EPT octree key (`"depth-x-y-z"`), or `"file"` for
+   * a LAS/LAZ loaded whole, whose points are in file order.
+   */
+  key: string;
+  /** Buffer index of the node's first point. */
+  start: number;
+  /** Number of points from this node. */
+  count: number;
+}
+
+/**
  * Normalized point cloud data structure
  */
 export interface PointCloudData {
@@ -76,6 +94,13 @@ export interface PointCloudData {
    * WKT string describing the coordinate reference system
    */
   wkt?: string;
+
+  /**
+   * Which source node each run of points came from, ascending by `start`.
+   * Only fully loaded nodes are listed; buffer indices not covered by a range
+   * (e.g. space reserved for a node still loading) hold no real point.
+   */
+  nodeRanges?: PointNodeRange[];
 }
 
 /**

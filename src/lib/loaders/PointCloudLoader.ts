@@ -4,7 +4,7 @@ import { createLazPerf, type LazPerf } from 'laz-perf';
 import { load } from '@loaders.gl/core';
 import { LASLoader } from '@loaders.gl/las';
 import proj4 from 'proj4';
-import type { PointCloudData, ExtraPointAttributes, AttributeArray } from './types';
+import type { PointCloudData, ExtraPointAttributes, AttributeArray, PointNodeRange } from './types';
 import type { PointCloudBounds } from '../core/types';
 
 /**
@@ -515,6 +515,7 @@ export class PointCloudLoader {
       hasClassification: true,
       coordinateOrigin,
       wkt,
+      nodeRanges: [{ key: 'file', start: 0, count: totalPoints }],
     };
   }
 
@@ -729,6 +730,7 @@ export class PointCloudLoader {
       hasClassification,
       coordinateOrigin,
       wkt,
+      nodeRanges: [{ key: 'file', start: 0, count: totalPoints }],
     };
   }
 
@@ -895,8 +897,10 @@ export class PointCloudLoader {
     const YIELD_INTERVAL_MS = 50; // Yield every 50ms to keep UI responsive
 
     // Load point data from each node
+    const nodeRanges: PointNodeRange[] = [];
     for (let nodeIdx = 0; nodeIdx < nodesToLoad.length; nodeIdx++) {
-      const { node } = nodesToLoad[nodeIdx];
+      const { key: nodeKey, node } = nodesToLoad[nodeIdx];
+      const nodeStart = pointIndex;
 
       // Report progress (25-90% range for point loading)
       const loadProgress = 25 + (nodeIdx / nodesToLoad.length) * 65;
@@ -1001,6 +1005,10 @@ export class PointCloudLoader {
       } catch (e) {
         console.warn(`Failed to load node: ${e}`);
       }
+      // A node that failed part-way keeps the points it did write.
+      if (pointIndex > nodeStart) {
+        nodeRanges.push({ key: nodeKey, start: nodeStart, count: pointIndex - nodeStart });
+      }
     }
 
     this._reportProgress(92, 'Processing complete, preparing visualization...');
@@ -1024,6 +1032,7 @@ export class PointCloudLoader {
       hasIntensity: true,
       hasClassification: true,
       wkt: copc.wkt,
+      nodeRanges,
     };
   }
 }

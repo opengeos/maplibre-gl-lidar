@@ -421,6 +421,26 @@ export class PointCloudManager {
   }
 
   /**
+   * Gets the live data of a loaded point cloud. The arrays are the ones the
+   * layers render from (for a streamed cloud, views of the loader's buffers),
+   * so in-place edits such as reclassification show after {@link refreshColors}.
+   *
+   * @param id - Point cloud id
+   * @returns The data, or null when no such cloud is loaded
+   */
+  getPointCloudData(id: string): PointCloudData | null {
+    return this._pointClouds.get(id)?.data ?? null;
+  }
+
+  /**
+   * Recomputes every cloud's colours from its current data and rebuilds the
+   * layers. Call after editing point attributes (e.g. classifications) in place.
+   */
+  refreshColors(): void {
+    this.updateStyle({ hiddenClassifications: this._options.hiddenClassifications ?? new Set() });
+  }
+
+  /**
    * Gets the last computed color bounds.
    * Used for displaying accurate colorbar min/max values.
    */
