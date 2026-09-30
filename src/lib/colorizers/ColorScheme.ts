@@ -30,6 +30,26 @@ export const CLASSIFICATION_COLORS: ClassificationColorMap = {
 };
 
 /**
+ * Per-code overrides of a classification's display name and colour, e.g. for
+ * custom classes (ASPRS 64-255) an annotation tool defines.
+ */
+export type ClassificationStyles = Record<number, { name?: string; color?: [number, number, number] }>;
+
+/**
+ * The colour a classification code is drawn with.
+ *
+ * @param code - Classification code
+ * @param styles - Optional per-code overrides
+ * @returns RGB colour
+ */
+export function getClassificationColor(
+  code: number,
+  styles?: ClassificationStyles
+): [number, number, number] {
+  return styles?.[code]?.color ?? CLASSIFICATION_COLORS[code] ?? [128, 128, 128];
+}
+
+/**
  * Options for color generation
  */
 export interface ColorOptions {
@@ -41,6 +61,8 @@ export interface ColorOptions {
   colorRange?: ColorRangeConfig;
   /** Set of classification codes to hide (set alpha to 0) */
   hiddenClassifications?: Set<number>;
+  /** Per-code classification name/colour overrides */
+  classificationStyles?: ClassificationStyles;
 }
 
 /**
@@ -94,7 +116,14 @@ export class ColorSchemeProcessor {
         case 'intensity':
           return this._colorByIntensity(data, colors, colormap, colorRange, usePercentile);
         case 'classification':
-          return { colors: this._colorByClassification(data, colors, options.hiddenClassifications) };
+          return {
+            colors: this._colorByClassification(
+              data,
+              colors,
+              options.hiddenClassifications,
+              options.classificationStyles
+            ),
+          };
         case 'rgb':
           return { colors: this._colorByRGB(data, colors) };
         default:
@@ -269,7 +298,8 @@ export class ColorSchemeProcessor {
   private _colorByClassification(
     data: PointCloudData,
     colors: Uint8Array,
-    hiddenClassifications?: Set<number>
+    hiddenClassifications?: Set<number>,
+    styles?: ClassificationStyles
   ): Uint8Array {
     if (!data.hasClassification || !data.classifications) {
       // Fall back to elevation if no classification data
@@ -279,7 +309,7 @@ export class ColorSchemeProcessor {
 
     for (let i = 0; i < data.pointCount; i++) {
       const cls = data.classifications[i];
-      const color = CLASSIFICATION_COLORS[cls] || [128, 128, 128];
+      const color = getClassificationColor(cls, styles);
       colors[i * 4] = color[0];
       colors[i * 4 + 1] = color[1];
       colors[i * 4 + 2] = color[2];
@@ -369,7 +399,9 @@ export class ColorSchemeProcessor {
 /**
  * Gets the name of a classification code.
  */
-export function getClassificationName(code: number): string {
+export function getClassificationName(code: number, styles?: ClassificationStyles): string {
+  const custom = styles?.[code]?.name;
+  if (custom) return custom;
   const names: Record<number, string> = {
     0: 'Never Classified',
     1: 'Unclassified',

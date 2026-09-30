@@ -249,7 +249,8 @@ export class PanelBuilder {
     if (this._classificationLegend && state.availableClassifications) {
       this._classificationLegend.setClassifications(
         Array.from(state.availableClassifications),
-        state.hiddenClassifications || new Set()
+        state.hiddenClassifications || new Set(),
+        state.classificationStyles
       );
     }
 
@@ -903,6 +904,7 @@ export class PanelBuilder {
       onToggle: (code, visible) => this._callbacks.onClassificationToggle(code, visible),
       onShowAll: () => this._callbacks.onClassificationShowAll(),
       onHideAll: () => this._callbacks.onClassificationHideAll(),
+      styles: this._state.classificationStyles,
     });
 
     container.appendChild(this._classificationLegend.render());

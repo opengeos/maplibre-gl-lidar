@@ -1,3 +1,4 @@
+import type { ClassificationStyles } from '../colorizers/ColorScheme';
 import type { ColorScheme, ColormapName, ColorRangeConfig } from '../core/types';
 
 /**
@@ -88,6 +89,8 @@ export interface PointCloudLayerOptions {
    * Set of classification codes to hide (only applies when colorScheme is 'classification')
    */
   hiddenClassifications?: Set<number>;
+  /** Per-code classification name/colour overrides (custom classes) */
+  classificationStyles?: ClassificationStyles;
 
   /**
    * Callback when a point is hovered (requires pickable: true)

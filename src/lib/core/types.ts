@@ -1,3 +1,4 @@
+import type { ClassificationStyles } from '../colorizers/ColorScheme';
 import type { Map } from 'maplibre-gl';
 
 /**
@@ -362,6 +363,8 @@ export interface LidarState {
   hiddenClassifications: Set<number>;
   /** Set of classification codes present in loaded point cloud data */
   availableClassifications: Set<number>;
+  /** Per-code classification name/colour overrides (custom classes) */
+  classificationStyles?: ClassificationStyles;
   /** Whether 3D terrain is enabled */
   terrainEnabled: boolean;
 }

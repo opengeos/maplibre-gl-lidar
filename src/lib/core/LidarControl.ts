@@ -34,7 +34,7 @@ import {
   createLidarShareUrl,
   parseLidarSharePayloadFromUrl,
 } from '../utils/share-url';
-import { getAvailableClassifications } from '../colorizers/ColorScheme';
+import { getAvailableClassifications, type ClassificationStyles } from '../colorizers/ColorScheme';
 
 /**
  * Default options for the LidarControl
@@ -529,6 +529,35 @@ export class LidarControl implements IControl {
     const loader = this._streamingLoaders.get(id) ?? this._eptStreamingLoaders.get(id);
     if (loader) return loader.getLoadedPointCloudData();
     return this._pointCloudManager?.getPointCloudData(id) ?? null;
+  }
+
+  /**
+   * Sets per-code display names and colours for classification codes, e.g.
+   * custom classes (64-255) defined by an annotation tool. Applies to point
+   * colours, the classification legend and the hover tooltip; a code without
+   * an entry keeps its ASPRS name and colour. Replaces any previous styles.
+   *
+   * @param styles - Code -> `{ name?, color? }`
+   */
+  setClassificationStyles(styles: ClassificationStyles): void {
+    const copy: ClassificationStyles = {};
+    for (const [code, style] of Object.entries(styles)) {
+      copy[Number(code)] = {
+        ...(style.name ? { name: style.name } : {}),
+        ...(style.color ? { color: [style.color[0], style.color[1], style.color[2]] } : {}),
+      };
+    }
+    this._pointCloudManager?.updateStyle({ classificationStyles: copy });
+    this.setState({ classificationStyles: copy });
+  }
+
+  /**
+   * The per-code classification styles set by {@link setClassificationStyles}.
+   *
+   * @returns A copy of the styles (empty when none are set)
+   */
+  getClassificationStyles(): ClassificationStyles {
+    return { ...(this._state.classificationStyles ?? {}) };
   }
 
   /**
@@ -2459,6 +2488,8 @@ export class LidarControl implements IControl {
    * Gets the classification name for a code.
    */
   private _getClassificationName(code: number): string {
+    const custom = this._state.classificationStyles?.[code]?.name;
+    if (custom) return custom;
     const classNames: Record<number, string> = {
       0: 'Never Classified',
       1: 'Unassigned',

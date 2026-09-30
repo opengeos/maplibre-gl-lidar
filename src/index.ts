@@ -9,7 +9,12 @@ export { PointCloudLoader } from './lib/loaders/PointCloudLoader';
 export { CopcStreamingLoader } from './lib/loaders/CopcStreamingLoader';
 export { EptStreamingLoader } from './lib/loaders/EptStreamingLoader';
 export { PointCloudManager } from './lib/layers/PointCloudManager';
-export { ColorSchemeProcessor, getClassificationName } from './lib/colorizers/ColorScheme';
+export {
+  ColorSchemeProcessor,
+  getClassificationName,
+  getClassificationColor,
+  type ClassificationStyles,
+} from './lib/colorizers/ColorScheme';
 export { COLORMAPS, COLORMAP_NAMES, COLORMAP_LABELS, getColormap } from './lib/colorizers/Colormaps';
 
 // Tools exports

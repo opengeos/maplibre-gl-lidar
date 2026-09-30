@@ -1,4 +1,8 @@
-import { CLASSIFICATION_COLORS, getClassificationName } from '../colorizers/ColorScheme';
+import {
+  getClassificationColor,
+  getClassificationName,
+  type ClassificationStyles,
+} from '../colorizers/ColorScheme';
 
 /**
  * Options for creating a classification legend
@@ -14,6 +18,8 @@ export interface ClassificationLegendOptions {
   onShowAll: () => void;
   /** Callback to hide all classifications */
   onHideAll: () => void;
+  /** Per-code name/colour overrides (custom classes) */
+  styles?: ClassificationStyles;
 }
 
 /**
@@ -107,14 +113,14 @@ export class ClassificationLegend {
     // Color swatch
     const swatch = document.createElement('span');
     swatch.className = 'lidar-classification-swatch';
-    const color = CLASSIFICATION_COLORS[code] || [128, 128, 128];
+    const color = getClassificationColor(code, this._options.styles);
     swatch.style.backgroundColor = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
 
     // Label
     const label = document.createElement('label');
     label.htmlFor = `lidar-class-${code}`;
     label.className = 'lidar-classification-label';
-    label.textContent = getClassificationName(code);
+    label.textContent = getClassificationName(code, this._options.styles);
 
     item.appendChild(checkbox);
     item.appendChild(swatch);
@@ -153,9 +159,14 @@ export class ClassificationLegend {
    * @param classifications - Array of classification codes to display
    * @param hiddenClassifications - Set of hidden classification codes
    */
-  setClassifications(classifications: number[], hiddenClassifications: Set<number>): void {
+  setClassifications(
+    classifications: number[],
+    hiddenClassifications: Set<number>,
+    styles?: ClassificationStyles
+  ): void {
     this._options.classifications = classifications;
     this._options.hiddenClassifications = hiddenClassifications;
+    if (styles) this._options.styles = styles;
 
     // Re-render the list
     if (this._listContainer) {

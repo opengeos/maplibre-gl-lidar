@@ -72,6 +72,7 @@ export class PointCloudManager {
       colormap: this._options.colormap,
       colorRange: this._options.colorRange,
       hiddenClassifications: this._options.hiddenClassifications,
+      classificationStyles: this._options.classificationStyles,
     });
 
     // Store the computed bounds for colorbar display
@@ -127,6 +128,7 @@ export class PointCloudManager {
         colormap: this._options.colormap,
         colorRange: this._options.colorRange,
         hiddenClassifications: this._options.hiddenClassifications,
+        classificationStyles: this._options.classificationStyles,
       });
 
       // Store the computed bounds for colorbar display
@@ -221,17 +223,26 @@ export class PointCloudManager {
       options.colormap !== this._options.colormap;
     const colorRangeChanged = options.colorRange !== undefined;
     const hiddenClassificationsChanged = options.hiddenClassifications !== undefined;
+    const classificationStylesChanged = options.classificationStyles !== undefined;
 
     this._options = { ...this._options, ...options };
 
     // If color-related settings changed, recompute colors
-    if (colorSchemeChanged || percentileChanged || colormapChanged || colorRangeChanged || hiddenClassificationsChanged) {
+    if (
+      colorSchemeChanged ||
+      percentileChanged ||
+      colormapChanged ||
+      colorRangeChanged ||
+      hiddenClassificationsChanged ||
+      classificationStylesChanged
+    ) {
       for (const [id, pc] of this._pointClouds) {
         const result = this._colorProcessor.getColorsWithBounds(pc.data, this._options.colorScheme, {
           usePercentile: this._options.usePercentile,
           colormap: this._options.colormap,
           colorRange: this._options.colorRange,
           hiddenClassifications: this._options.hiddenClassifications,
+          classificationStyles: this._options.classificationStyles,
         });
 
         // Store the computed bounds for colorbar display
