@@ -944,28 +944,30 @@ export class CopcStreamingLoader {
       throw new Error('CopcStreamingLoader not initialized. Call initialize() first.');
     }
     if (this._regionLoading) throw new Error('A region is already loading.');
-    await this._ensureHierarchyLoaded('0-0-0-0');
-    const [west, south, east, north] = bounds;
-    const region = Array.from(this._nodeCache.values()).filter(
-      (node) =>
-        node.pointCount > 0 &&
-        !(
-          node.boundsWgs84.maxX < west ||
-          node.boundsWgs84.minX > east ||
-          node.boundsWgs84.maxY < south ||
-          node.boundsWgs84.minY > north
-        )
-    );
-    const total = region.reduce((sum, node) => sum + node.pointCount, 0);
-    const limit = Math.min(options.maxPoints ?? Infinity, this._options.pointBudget);
-    if (total > limit) {
-      throw new Error(
-        `The region holds ${total} points, more than the ${limit} allowed; choose a smaller area.`
-      );
-    }
-    const regionKeys = new Set(region.map((node) => node.key));
+    // Claimed before the first await, so concurrent calls cannot both pass.
     this._regionLoading = true;
+    let result: { nodes: number; points: number };
     try {
+      await this._ensureHierarchyLoaded('0-0-0-0');
+      const [west, south, east, north] = bounds;
+      const region = Array.from(this._nodeCache.values()).filter(
+        (node) =>
+          node.pointCount > 0 &&
+          !(
+            node.boundsWgs84.maxX < west ||
+            node.boundsWgs84.minX > east ||
+            node.boundsWgs84.maxY < south ||
+            node.boundsWgs84.minY > north
+          )
+      );
+      const total = region.reduce((sum, node) => sum + node.pointCount, 0);
+      const limit = Math.min(options.maxPoints ?? Infinity, this._options.pointBudget);
+      if (total > limit) {
+        throw new Error(
+          `The region holds ${total} points, more than the ${limit} allowed; choose a smaller area.`
+        );
+      }
+      const regionKeys = new Set(region.map((node) => node.key));
       // Let requests already writing the buffers finish before sizing ours.
       while (this._activeRequests > 0) await new Promise((r) => setTimeout(r, 50));
       const pending = region.filter((node) => node.state !== 'loaded');
@@ -996,11 +998,19 @@ export class CopcStreamingLoader {
       await Promise.all(
         Array.from({ length: Math.max(1, this._options.maxConcurrentRequests) }, worker)
       );
+      // A node that failed leaves the region incomplete: report it rather
+      // than a full-resolution result with missing points.
+      const failed = pending.filter((node) => node.state === 'error');
+      if (failed.length > 0) {
+        this._pinnedKeys.clear();
+        throw new Error(`Failed to load ${failed.length} of the region's ${region.length} nodes.`);
+      }
+      result = { nodes: region.length, points: total };
     } finally {
       this._regionLoading = false;
       void this.loadQueuedNodes();
     }
-    return { nodes: region.length, points: total };
+    return result;
   }
 
   /**
@@ -1085,6 +1095,12 @@ export class CopcStreamingLoader {
     } catch (error) {
       node.state = 'error';
       node.error = error instanceof Error ? error.message : String(error);
+      // Give back the reserved space when it is the last reservation; any
+      // other is reclaimed by the next compaction, which drops failed nodes.
+      if (startIndex + node.pointCount === this._totalLoadedPoints) {
+        this._totalLoadedPoints = startIndex;
+      }
+      node.bufferStartIndex = undefined;
       console.warn(`Failed to load node ${node.key}:`, error);
       this._emit('error', error as Error);
     } finally {

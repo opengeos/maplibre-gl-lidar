@@ -144,4 +144,38 @@ describe('CopcStreamingLoader.loadRegion', () => {
     await region;
     expect(loaded[0]).toBe('1-0-0-0');
   });
+
+  it('rejects a region with a failed node and unpins it', async () => {
+    const { loader, internals } = setup(100, [node('1-0-0-0', 0, 1, 4), node('1-1-0-0', 0.5, 1, 4)]);
+    internals._loadNode = async (entry) => {
+      entry.state = entry.key === '1-1-0-0' ? 'error' : 'loaded';
+    };
+    await expect(loader.loadRegion([0, 0, 1, 1])).rejects.toThrow(/Failed to load 1 of the region's 2 nodes/);
+    expect(loader.hasPinnedRegion()).toBe(false);
+  });
+
+  it('refuses a second region while one is loading', async () => {
+    const { loader, internals } = setup(100, [node('1-0-0-0', 0, 1, 4)]);
+    let release!: () => void;
+    internals._loadNode = async (entry) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      entry.state = 'loaded';
+    };
+    const first = loader.loadRegion([0, 0, 1, 1]);
+    await expect(loader.loadRegion([0, 0, 1, 1])).rejects.toThrow(/already loading/);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    await first;
+  });
+
+  it('gives back a failed node\'s reserved space', async () => {
+    // Without a COPC source the real node load fails after reserving.
+    const loader = new CopcStreamingLoader('https://example.com/a.copc.laz');
+    const internals = loader as unknown as Internals;
+    const failing = node('1-0-0-0', 0, 1, 7);
+    await internals._loadNode(failing);
+    expect(failing.state).toBe('error');
+    expect(internals._totalLoadedPoints).toBe(0);
+    expect(failing.bufferStartIndex).toBeUndefined();
+  });
 });
