@@ -443,7 +443,7 @@ control.on("pointclick", (event) => {
 
 ### Drawing above the point cloud
 
-`getDeckOverlay().addLayer(id, layer, { overlay: true })` adds a deck.gl layer that is always drawn after the point cloud, even after chunks that stream in later, so selections, measurements or annotation geometry stay on top. Add `parameters: { depthTest: false }` to keep it visible through the points.
+`getDeckOverlay().addLayer(id, layer, { overlay: true })` adds a deck.gl layer that is always drawn after the point cloud, even after chunks that stream in later, so selections, measurements or annotation geometry stay on top. Add `parameters: { depthCompare: 'always' }` (deck.gl v9) to keep it visible through the points.
 
 ### Z Offset
 

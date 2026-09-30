@@ -68,7 +68,7 @@ export class DeckOverlay {
    * graphics that belong on top of the points (selections, measurements,
    * annotation geometry): overlay layers are always drawn after every other
    * layer, in the order they were first added. Combine with
-   * `parameters: { depthTest: false }` to keep them visible through the
+   * `parameters: { depthCompare: 'always' }` to keep them visible through the
    * points.
    *
    * @param id - Unique layer ID
