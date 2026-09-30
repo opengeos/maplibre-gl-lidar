@@ -49,6 +49,7 @@ export class PointCloudManager {
       zOffset: options.zOffset ?? 0,
       classificationStyles: options.classificationStyles,
       onHover: options.onHover,
+      onClick: options.onClick,
     };
   }
 
@@ -604,13 +605,12 @@ export class PointCloudManager {
         chunkColors[i * 4 + 3] = colors[srcIdx * 4 + 3];
       }
 
-      // Create hover handler for this chunk
-      const handleHover = (info: PickingInfo) => {
-        if (!this._options.onHover) return;
-
+      // Describes the picked point of this chunk, or null for a miss.
+      const pickedPoint = (info: PickingInfo): PickedPointInfo | null => {
         if (info.index >= 0 && info.picked && info.index < originalIndices.length) {
           const originalIndex = originalIndices[info.index];
           const pointInfo: PickedPointInfo = {
+            pointCloudId: id,
             index: originalIndex,
             longitude: coordinateOrigin[0] + chunkPositions[info.index * 3],
             latitude: coordinateOrigin[1] + chunkPositions[info.index * 3 + 1],
@@ -647,10 +647,16 @@ export class PointCloudManager {
             }
           }
 
-          this._options.onHover(pointInfo);
-        } else {
-          this._options.onHover(null);
+          return pointInfo;
         }
+        return null;
+      };
+      const handleHover = (info: PickingInfo) => {
+        this._options.onHover?.(pickedPoint(info));
+      };
+      const handleClick = (info: PickingInfo) => {
+        const point = pickedPoint(info);
+        if (point) this._options.onClick?.(point);
       };
 
       // Create a unique data fingerprint to force deck.gl to update
@@ -674,6 +680,7 @@ export class PointCloudManager {
         getNormal: [0, 0, 1],
         pickable: this._options.pickable,
         onHover: this._options.pickable ? handleHover : undefined,
+        onClick: this._options.pickable ? handleClick : undefined,
         autoHighlight: this._options.pickable,
         highlightColor: [255, 255, 0, 200],
         // Force update when these values change

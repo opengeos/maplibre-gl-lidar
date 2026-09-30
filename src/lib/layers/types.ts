@@ -5,6 +5,8 @@ import type { ColorScheme, ColormapName, ColorRangeConfig } from '../core/types'
  * Information about a picked point
  */
 export interface PickedPointInfo {
+  /** Id of the point cloud the point belongs to */
+  pointCloudId?: string;
   /** Point index within the point cloud */
   index: number;
   /** Longitude coordinate */
@@ -96,4 +98,9 @@ export interface PointCloudLayerOptions {
    * Callback when a point is hovered (requires pickable: true)
    */
   onHover?: (info: PickedPointInfo | null) => void;
+
+  /**
+   * Callback when a point is clicked (requires pickable: true)
+   */
+  onClick?: (info: PickedPointInfo) => void;
 }

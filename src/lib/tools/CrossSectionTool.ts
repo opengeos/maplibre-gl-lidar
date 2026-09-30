@@ -315,7 +315,7 @@ export class CrossSectionTool {
     if (this._deckOverlay.hasLayer(this.LAYER_ID)) {
       this._deckOverlay.updateLayer(this.LAYER_ID, layer);
     } else {
-      this._deckOverlay.addLayer(this.LAYER_ID, layer);
+      this._deckOverlay.addLayer(this.LAYER_ID, layer, { overlay: true });
     }
   }
 

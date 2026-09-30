@@ -1,5 +1,6 @@
 import type { ClassificationStyles } from '../colorizers/ColorScheme';
 import type { Map } from 'maplibre-gl';
+import type { PickedPointInfo } from '../layers/types';
 
 /**
  * COPC loading mode options
@@ -384,7 +385,8 @@ export type LidarControlEvent =
   | 'streamingprogress'
   | 'streamingstart'
   | 'streamingstop'
-  | 'budgetreached';
+  | 'budgetreached'
+  | 'pointclick';
 
 /**
  * Event data passed to event handlers
@@ -395,6 +397,8 @@ export interface LidarEventData {
   /** Full point cloud info (for load events) or just the id (for unload events) */
   pointCloud?: PointCloudInfo | { id: string };
   error?: Error;
+  /** The clicked point (for `pointclick`; requires pickable) */
+  point?: PickedPointInfo;
 }
 
 /**

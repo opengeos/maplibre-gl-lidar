@@ -235,6 +235,7 @@ export class LidarControl implements IControl {
       zOffset: this._state.zOffset,
       classificationStyles: this._state.classificationStyles,
       onHover: (info) => this._handlePointHover(info),
+      onClick: (info) => this._emitWithData('pointclick', { point: info }),
     });
 
     // Apply the color theme (sets a class on <html> so body-level panels

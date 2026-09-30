@@ -432,6 +432,19 @@ control.setPickInfoFields([
 ]);
 ```
 
+With `pickable` on, a click on a point emits `pointclick` with the point (its cloud id, index, coordinates and attributes):
+
+```typescript
+control.on("pointclick", (event) => {
+  const point = event.point!;
+  console.log(point.pointCloudId, point.index, point.classification);
+});
+```
+
+### Drawing above the point cloud
+
+`getDeckOverlay().addLayer(id, layer, { overlay: true })` adds a deck.gl layer that is always drawn after the point cloud, even after chunks that stream in later, so selections, measurements or annotation geometry stay on top. Add `parameters: { depthTest: false }` to keep it visible through the points.
+
 ### Z Offset
 
 Shift point clouds vertically for alignment with terrain or other data:

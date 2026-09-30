@@ -13,6 +13,8 @@ export class DeckOverlay {
   private _map: MapLibreMap;
   private _overlay: MapLibreOverlay;
   private _layers: Map<string, Layer>;
+  /** Layers drawn after every other one (see {@link addLayer}). */
+  private _overlayIds: Set<string> = new Set();
   /** The deck.gl canvas wrapper, re-parented out of the control container. */
   private _container: HTMLDivElement | null = null;
 
@@ -59,13 +61,24 @@ export class DeckOverlay {
   }
 
   /**
-   * Adds a layer to the overlay.
+   * Adds (or replaces) a layer.
+   *
+   * Point cloud chunks are added as they stream in, so a layer added before
+   * them would otherwise be drawn underneath. Pass `overlay: true` for
+   * graphics that belong on top of the points (selections, measurements,
+   * annotation geometry): overlay layers are always drawn after every other
+   * layer, in the order they were first added. Combine with
+   * `parameters: { depthTest: false }` to keep them visible through the
+   * points.
    *
    * @param id - Unique layer ID
    * @param layer - The deck.gl layer to add
+   * @param options - `overlay` draws the layer above the point cloud
    */
-  addLayer(id: string, layer: Layer): void {
+  addLayer(id: string, layer: Layer, options: { overlay?: boolean } = {}): void {
     this._layers.set(id, layer);
+    if (options.overlay) this._overlayIds.add(id);
+    else this._overlayIds.delete(id);
     this._updateOverlay();
   }
 
@@ -76,6 +89,7 @@ export class DeckOverlay {
    */
   removeLayer(id: string): void {
     this._layers.delete(id);
+    this._overlayIds.delete(id);
     this._updateOverlay();
   }
 
@@ -116,6 +130,7 @@ export class DeckOverlay {
    */
   clearLayers(): void {
     this._layers.clear();
+    this._overlayIds.clear();
     this._updateOverlay();
   }
 
@@ -164,15 +179,13 @@ export class DeckOverlay {
    * Layers are sorted so that overlay layers (like cross-section) render on top.
    */
   private _updateOverlay(): void {
-    // Sort layers: point cloud layers first, overlay layers (cross-section) last
-    const sortedLayers = Array.from(this._layers.entries()).sort(([idA], [idB]) => {
-      // Cross-section layer should render last (on top)
-      const isOverlayA = idA.includes('cross-section');
-      const isOverlayB = idB.includes('cross-section');
-      if (isOverlayA && !isOverlayB) return 1;
-      if (!isOverlayA && isOverlayB) return -1;
-      return 0;
-    }).map(([, layer]) => layer);
+    // Point cloud layers first, overlay layers last (on top), each group in
+    // insertion order.
+    const entries = Array.from(this._layers.entries());
+    const sortedLayers = [
+      ...entries.filter(([id]) => !this._overlayIds.has(id)),
+      ...entries.filter(([id]) => this._overlayIds.has(id)),
+    ].map(([, layer]) => layer);
 
     this._overlay.setProps({
       layers: sortedLayers,
