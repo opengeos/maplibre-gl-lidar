@@ -98,6 +98,21 @@ function createBufferGetter(buffer: ArrayBuffer): Getter {
 }
 
 /**
+ * Whether a LAS/LAZ file's point data is LASzip-compressed. LASzip marks it in
+ * the raw point data format byte (offset 104): bit 7, plus bit 6 on some LAS
+ * 1.4 writers. copc.js's parsed header strips those bits, so the raw byte must
+ * be read; the generating-software name is only a fallback for old writers.
+ *
+ * @param file - The file's bytes (at least the 375-byte header)
+ * @param generatingSoftware - The header's generating-software field
+ * @returns True for a LAZ file
+ */
+export function isLazCompressed(file: Uint8Array, generatingSoftware = ''): boolean {
+  const formatByte = file.length > 104 ? file[104] : 0;
+  return (formatByte & 0xc0) !== 0 || generatingSoftware.toLowerCase().includes('laszip');
+}
+
+/**
  * Extracts the PROJCS section from a WKT string (handles COMPD_CS)
  */
 function extractProjcsFromWkt(wkt: string): string {
@@ -346,8 +361,7 @@ export class PointCloudLoader {
     const header = Las.Header.parse(uint8);
 
     // Check if file is compressed (LAZ)
-    const isCompressed = (header.pointDataRecordFormat & 0x80) !== 0 ||
-      header.generatingSoftware.toLowerCase().includes('laszip');
+    const isCompressed = isLazCompressed(uint8, header.generatingSoftware);
 
     let pointData: Uint8Array;
 
