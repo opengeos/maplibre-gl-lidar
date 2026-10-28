@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PointCloudData, PointCloudStyleOverride } from '../src/index';
 import { PointCloudManager } from '../src/index';
 import type { DeckOverlay } from '../src/lib/core/DeckOverlay';
+import type { ColorRangeConfig } from '../src/lib/core/types';
+import { ColorSchemeProcessor } from '../src/lib/colorizers/ColorScheme';
 
 vi.mock('@deck.gl/maplibre', () => ({ MapLibreOverlay: class {} }));
 
@@ -31,6 +33,11 @@ function cloud(zs: number[]): PointCloudData {
     hasIntensity: true,
     hasClassification: false,
   };
+}
+
+/** An absolute 0..10 color range, as a fresh object on every call. */
+function absoluteRange(): ColorRangeConfig {
+  return { mode: 'absolute', percentileLow: 2, percentileHigh: 98, absoluteMin: 0, absoluteMax: 10 };
 }
 
 function setup(options: ConstructorParameters<typeof PointCloudManager>[1] = {}) {
@@ -111,9 +118,12 @@ describe('per-cloud style overrides', () => {
   });
 
   it('keeps overrides when streamed data replaces the cloud', () => {
-    const { manager, layer, z } = setup();
-    manager.addPointCloud('a', cloud([0, 1]), { pointSize: 6, zOffset: 4 });
+    const { manager, layer, colors, z } = setup({ colorScheme: 'elevation' });
+    manager.addPointCloud('a', cloud([0, 1]), { colorScheme: 'intensity', pointSize: 6, zOffset: 4 });
+    manager.addPointCloud('b', cloud([0, 1]));
     manager.updatePointCloud('a', cloud([0, 1, 2]));
+    manager.updatePointCloud('b', cloud([0, 1, 2]));
+    expect(colors('a')).not.toEqual(colors('b'));
     expect(layer('a').props.pointSize).toBe(6);
     expect(z('a')).toBe(4);
   });
@@ -124,6 +134,45 @@ describe('per-cloud style overrides', () => {
     const bounds = manager.getLastComputedBounds();
     manager.addPointCloud('b', cloud([100, 200]), { colorScheme: 'elevation', colormap: 'plasma' });
     expect(manager.getLastComputedBounds()).toEqual(bounds);
+  });
+
+  it('falls back to a remaining cloud for the bounds when the source gets a color override', () => {
+    const { manager } = setup({ colorScheme: 'elevation', usePercentile: false });
+    manager.addPointCloud('a', cloud([0, 10]));
+    const boundsA = manager.getLastComputedBounds();
+    manager.addPointCloud('b', cloud([100, 200]));
+    expect(manager.getLastComputedBounds()).not.toEqual(boundsA);
+
+    manager.setPointCloudStyle('b', { colormap: 'plasma' });
+    expect(manager.getLastComputedBounds()).toEqual(boundsA);
+
+    manager.setPointCloudStyle('a', { colormap: 'plasma' });
+    expect(manager.getLastComputedBounds()).toBeUndefined();
+  });
+
+  it('does not share nested color settings with callers', () => {
+    const { manager, colors } = setup({ colorScheme: 'elevation' });
+    const colorRange = absoluteRange();
+    manager.addPointCloud('a', cloud([0, 5, 10]), { colorRange });
+    const before = colors('a');
+
+    colorRange.absoluteMax = 100;
+    expect(manager.getPointCloudStyle('a')?.colorRange?.absoluteMax).toBe(10);
+    manager.getPointCloudStyle('a')!.colorRange!.absoluteMax = 100;
+    expect(manager.getPointCloudStyle('a')?.colorRange?.absoluteMax).toBe(10);
+
+    // Passing the edited range back is a real change, so the cloud recolors.
+    manager.setPointCloudStyle('a', { colorRange });
+    expect(colors('a')).not.toEqual(before);
+  });
+
+  it('reuses colors when the color settings are equal by value', () => {
+    const { manager } = setup({ colorScheme: 'elevation' });
+    manager.addPointCloud('a', cloud([0, 5, 10]), { colorRange: absoluteRange() });
+    const compute = vi.spyOn(ColorSchemeProcessor.prototype, 'getColorsWithBounds');
+    manager.setPointCloudStyle('a', { colorRange: absoluteRange(), pointSize: 4 });
+    expect(compute).not.toHaveBeenCalled();
+    compute.mockRestore();
   });
 
   it('ignores unknown ids', () => {

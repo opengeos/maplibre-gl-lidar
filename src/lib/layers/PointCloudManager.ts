@@ -37,6 +37,8 @@ export class PointCloudManager {
   private _options: PointCloudLayerOptions;
   private _colorProcessor: ColorSchemeProcessor;
   private _lastComputedBounds?: { min: number; max: number };
+  /** Color bounds of each cloud that follows the manager-wide color settings */
+  private _globalColorBounds = new Map<string, { min: number; max: number }>();
 
   constructor(deckOverlay: DeckOverlay, options: Partial<PointCloudLayerOptions> = {}) {
     this._deckOverlay = deckOverlay;
@@ -72,7 +74,11 @@ export class PointCloudManager {
    * top of the manager-wide options). Only clouds that follow the manager-wide
    * color settings update the bounds reported for the colorbar.
    */
-  private _computeColors(data: PointCloudData, override: PointCloudStyleOverride | null): Uint8Array {
+  private _computeColors(
+    id: string,
+    data: PointCloudData,
+    override: PointCloudStyleOverride | null,
+  ): Uint8Array {
     const result = this._colorProcessor.getColorsWithBounds(
       data,
       override?.colorScheme ?? this._options.colorScheme,
@@ -87,6 +93,9 @@ export class PointCloudManager {
     const followsGlobalColors = !override || COLOR_OVERRIDE_KEYS.every((key) => override[key] === undefined);
     if (result.bounds && followsGlobalColors) {
       this._lastComputedBounds = result.bounds;
+      this._globalColorBounds.set(id, result.bounds);
+    } else {
+      this._globalColorBounds.delete(id);
     }
     return result.colors;
   }
@@ -106,7 +115,7 @@ export class PointCloudManager {
     this._pointClouds.set(id, {
       id,
       data,
-      colors: this._computeColors(data, styleOverride),
+      colors: this._computeColors(id, data, styleOverride),
       coordinateOrigin,
       visible: true,
       opacityOverride: null,
@@ -148,7 +157,7 @@ export class PointCloudManager {
       this._pointClouds.set(id, {
         id,
         data,
-        colors: this._computeColors(data, existing.styleOverride),
+        colors: this._computeColors(id, data, existing.styleOverride),
         coordinateOrigin: data.coordinateOrigin,
         visible: existing.visible,
         opacityOverride: existing.opacityOverride,
@@ -188,6 +197,7 @@ export class PointCloudManager {
       }
     }
     this._pointClouds.delete(id);
+    this._globalColorBounds.delete(id);
   }
 
   /**
@@ -247,7 +257,7 @@ export class PointCloudManager {
       classificationStylesChanged
     ) {
       for (const [id, pc] of this._pointClouds) {
-        this._pointClouds.set(id, { ...pc, colors: this._computeColors(pc.data, pc.styleOverride) });
+        this._pointClouds.set(id, { ...pc, colors: this._computeColors(id, pc.data, pc.styleOverride) });
       }
     }
 
@@ -415,14 +425,17 @@ export class PointCloudManager {
     const pc = this._pointClouds.get(id);
     if (!pc) return;
     const styleOverride = normalizeStyleOverride(style);
-    const colorsChanged = COLOR_OVERRIDE_KEYS.some(
-      (key) => pc.styleOverride?.[key] !== styleOverride?.[key],
-    );
+    const colorsChanged = !sameColorOverrides(pc.styleOverride, styleOverride);
     this._pointClouds.set(id, {
       ...pc,
       styleOverride,
-      colors: colorsChanged ? this._computeColors(pc.data, styleOverride) : pc.colors,
+      colors: colorsChanged ? this._computeColors(id, pc.data, styleOverride) : pc.colors,
     });
+    if (colorsChanged && !this._globalColorBounds.has(id)) {
+      // This cloud no longer supplies the colorbar bounds; fall back to the
+      // most recent cloud that still follows the manager-wide colors.
+      this._lastComputedBounds = [...this._globalColorBounds.values()].pop();
+    }
     this._createLayer(id);
   }
 
@@ -436,7 +449,7 @@ export class PointCloudManager {
   getPointCloudStyle(id: string): PointCloudStyleOverride | undefined {
     const pc = this._pointClouds.get(id);
     if (!pc) return undefined;
-    return { ...pc.styleOverride };
+    return cloneStyleOverride(pc.styleOverride) ?? {};
   }
 
   /**
@@ -450,6 +463,7 @@ export class PointCloudManager {
       }
     }
     this._pointClouds.clear();
+    this._globalColorBounds.clear();
   }
 
   /**
@@ -742,5 +756,32 @@ function normalizeStyleOverride(
 ): PointCloudStyleOverride | null {
   if (!style) return null;
   const entries = Object.entries(style).filter(([, value]) => value !== undefined);
-  return entries.length ? (Object.fromEntries(entries) as PointCloudStyleOverride) : null;
+  return entries.length ? cloneStyleOverride(Object.fromEntries(entries) as PointCloudStyleOverride) : null;
+}
+
+/**
+ * Copies a style override, including its nested color settings, so the stored
+ * override never shares mutable objects with a caller.
+ */
+function cloneStyleOverride(style: PointCloudStyleOverride | null): PointCloudStyleOverride | null {
+  if (!style) return null;
+  const copy = { ...style };
+  if (style.colorRange) copy.colorRange = { ...style.colorRange };
+  if (typeof style.colorScheme === 'object') {
+    const { colors, domain } = style.colorScheme;
+    copy.colorScheme = {
+      ...style.colorScheme,
+      ...(colors && { colors: [...colors] }),
+      ...(domain && { domain: [domain[0], domain[1]] }),
+    };
+  }
+  return copy;
+}
+
+/** Whether two overrides have the same color settings, compared by value. */
+function sameColorOverrides(
+  a: PointCloudStyleOverride | null,
+  b: PointCloudStyleOverride | null,
+): boolean {
+  return COLOR_OVERRIDE_KEYS.every((key) => JSON.stringify(a?.[key]) === JSON.stringify(b?.[key]));
 }
