@@ -101,6 +101,15 @@ export class PointCloudManager {
   }
 
   /**
+   * Points the colorbar bounds at the most recent cloud that still follows the
+   * manager-wide colors, or clears them when none does. Called when a cloud
+   * stops supplying bounds (removed, or given a color override).
+   */
+  private _reselectBounds(): void {
+    this._lastComputedBounds = [...this._globalColorBounds.values()].pop();
+  }
+
+  /**
    * Adds a point cloud to the visualization.
    *
    * @param id - Unique identifier for the point cloud
@@ -197,7 +206,7 @@ export class PointCloudManager {
       }
     }
     this._pointClouds.delete(id);
-    this._globalColorBounds.delete(id);
+    if (this._globalColorBounds.delete(id)) this._reselectBounds();
   }
 
   /**
@@ -431,11 +440,7 @@ export class PointCloudManager {
       styleOverride,
       colors: colorsChanged ? this._computeColors(id, pc.data, styleOverride) : pc.colors,
     });
-    if (colorsChanged && !this._globalColorBounds.has(id)) {
-      // This cloud no longer supplies the colorbar bounds; fall back to the
-      // most recent cloud that still follows the manager-wide colors.
-      this._lastComputedBounds = [...this._globalColorBounds.values()].pop();
-    }
+    if (colorsChanged && !this._globalColorBounds.has(id)) this._reselectBounds();
     this._createLayer(id);
   }
 
@@ -464,6 +469,7 @@ export class PointCloudManager {
     }
     this._pointClouds.clear();
     this._globalColorBounds.clear();
+    this._lastComputedBounds = undefined;
   }
 
   /**

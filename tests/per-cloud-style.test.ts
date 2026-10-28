@@ -150,6 +150,19 @@ describe('per-cloud style overrides', () => {
     expect(manager.getLastComputedBounds()).toBeUndefined();
   });
 
+  it('falls back to a remaining cloud for the bounds when the source is removed', () => {
+    const { manager } = setup({ colorScheme: 'elevation', usePercentile: false });
+    manager.addPointCloud('a', cloud([0, 10]));
+    const boundsA = manager.getLastComputedBounds();
+    manager.addPointCloud('b', cloud([100, 200]));
+
+    manager.removePointCloud('b');
+    expect(manager.getLastComputedBounds()).toEqual(boundsA);
+
+    manager.clear();
+    expect(manager.getLastComputedBounds()).toBeUndefined();
+  });
+
   it('does not share nested color settings with callers', () => {
     const { manager, colors } = setup({ colorScheme: 'elevation' });
     const colorRange = absoluteRange();
