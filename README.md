@@ -466,6 +466,28 @@ console.log(control.getZOffset()); // 50
 
 The Z offset can also be adjusted interactively via the "Z Offset" checkbox and slider in the GUI panel.
 
+### Per-cloud styles
+
+`PointCloudManager` styles every cloud it holds with one set of options. A
+single cloud can override its color scheme, colormap, color range, point size
+and Z offset; fields it leaves unset follow the manager-wide options, and the
+overrides survive streamed updates and manager-wide style changes.
+
+```typescript
+import { DeckOverlay, PointCloudManager } from "maplibre-gl-lidar";
+
+const manager = new PointCloudManager(new DeckOverlay(map), { colorScheme: "elevation" });
+manager.addPointCloud("context", contextData); // follows the manager-wide style
+manager.addPointCloud("highlight", highlightData, { colorScheme: "intensity", pointSize: 4 });
+
+manager.setPointCloudStyle("highlight", { zOffset: 0.5 }); // replaces the overrides
+manager.setPointCloudStyle("highlight", null); // back to the manager-wide style
+manager.getPointCloudStyle("highlight"); // => {}
+```
+
+The colorbar bounds (`getLastComputedBounds()`) only come from clouds that use
+the manager-wide color settings.
+
 ### Classification Legend
 
 When using the "Classification" color scheme, an interactive legend appears showing all classification types found in the point cloud data. Each classification displays:

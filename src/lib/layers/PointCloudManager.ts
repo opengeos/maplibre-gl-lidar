@@ -4,7 +4,7 @@ import type { PickingInfo } from '@deck.gl/core';
 import type { DeckOverlay } from '../core/DeckOverlay';
 import type { PointCloudData } from '../loaders/types';
 import type { ColorScheme, PointCloudBounds, ColormapName, ColorRangeConfig } from '../core/types';
-import type { PointCloudLayerOptions, PickedPointInfo } from './types';
+import type { PointCloudLayerOptions, PickedPointInfo, PointCloudStyleOverride } from './types';
 import { ColorSchemeProcessor } from '../colorizers/ColorScheme';
 
 /**
@@ -21,7 +21,12 @@ interface ManagedPointCloud {
   opacityOverride: number | null;
   /** Number of deck.gl chunk layers currently created for this point cloud */
   chunkCount: number;
+  /** Per-cloud style overrides (null means use the manager-wide options) */
+  styleOverride: PointCloudStyleOverride | null;
 }
+
+/** The style fields whose change requires recomputing a cloud's colors. */
+const COLOR_OVERRIDE_KEYS = ['colorScheme', 'colormap', 'colorRange'] as const;
 
 /**
  * Manages deck.gl PointCloudLayer instances for visualization.
@@ -32,6 +37,8 @@ export class PointCloudManager {
   private _options: PointCloudLayerOptions;
   private _colorProcessor: ColorSchemeProcessor;
   private _lastComputedBounds?: { min: number; max: number };
+  /** Color bounds of each cloud that follows the manager-wide color settings */
+  private _globalColorBounds = new Map<string, { min: number; max: number }>();
 
   constructor(deckOverlay: DeckOverlay, options: Partial<PointCloudLayerOptions> = {}) {
     this._deckOverlay = deckOverlay;
@@ -63,36 +70,66 @@ export class PointCloudManager {
   }
 
   /**
+   * Computes a point cloud's colors with its effective style (its overrides on
+   * top of the manager-wide options). Only clouds that follow the manager-wide
+   * color settings update the bounds reported for the colorbar.
+   */
+  private _computeColors(
+    id: string,
+    data: PointCloudData,
+    override: PointCloudStyleOverride | null,
+  ): Uint8Array {
+    const result = this._colorProcessor.getColorsWithBounds(
+      data,
+      override?.colorScheme ?? this._options.colorScheme,
+      {
+        usePercentile: this._options.usePercentile,
+        colormap: override?.colormap ?? this._options.colormap,
+        colorRange: override?.colorRange ?? this._options.colorRange,
+        hiddenClassifications: this._options.hiddenClassifications,
+        classificationStyles: this._options.classificationStyles,
+      },
+    );
+    const followsGlobalColors = !override || COLOR_OVERRIDE_KEYS.every((key) => override[key] === undefined);
+    if (result.bounds && followsGlobalColors) {
+      this._lastComputedBounds = result.bounds;
+      this._globalColorBounds.set(id, result.bounds);
+    } else {
+      this._globalColorBounds.delete(id);
+    }
+    return result.colors;
+  }
+
+  /**
+   * Points the colorbar bounds at the most recent cloud that still follows the
+   * manager-wide colors, or clears them when none does. Called when a cloud
+   * stops supplying bounds (removed, or given a color override).
+   */
+  private _reselectBounds(): void {
+    this._lastComputedBounds = [...this._globalColorBounds.values()].pop();
+  }
+
+  /**
    * Adds a point cloud to the visualization.
    *
    * @param id - Unique identifier for the point cloud
    * @param data - Point cloud data (positions are already offsets from coordinateOrigin)
+   * @param style - Optional style overrides for this point cloud only
    */
-  addPointCloud(id: string, data: PointCloudData): void {
-    const result = this._colorProcessor.getColorsWithBounds(data, this._options.colorScheme, {
-      usePercentile: this._options.usePercentile,
-      colormap: this._options.colormap,
-      colorRange: this._options.colorRange,
-      hiddenClassifications: this._options.hiddenClassifications,
-      classificationStyles: this._options.classificationStyles,
-    });
-
-    // Store the computed bounds for colorbar display
-    if (result.bounds) {
-      this._lastComputedBounds = result.bounds;
-    }
-
+  addPointCloud(id: string, data: PointCloudData, style?: PointCloudStyleOverride): void {
+    const styleOverride = normalizeStyleOverride(style);
     // Use the coordinate origin from the data - positions are already stored as offsets
     const coordinateOrigin = data.coordinateOrigin;
 
     this._pointClouds.set(id, {
       id,
       data,
-      colors: result.colors,
+      colors: this._computeColors(id, data, styleOverride),
       coordinateOrigin,
       visible: true,
       opacityOverride: null,
       chunkCount: 0,
+      styleOverride,
     });
     this._createLayer(id);
   }
@@ -117,6 +154,7 @@ export class PointCloudManager {
           visible: existing.visible,
           opacityOverride: existing.opacityOverride,
           chunkCount: existing.chunkCount,
+          styleOverride: existing.styleOverride,
         });
         this._createLayer(id);
       }
@@ -125,27 +163,15 @@ export class PointCloudManager {
 
     if (existing) {
       // Recalculate colors for new data
-      const result = this._colorProcessor.getColorsWithBounds(data, this._options.colorScheme, {
-        usePercentile: this._options.usePercentile,
-        colormap: this._options.colormap,
-        colorRange: this._options.colorRange,
-        hiddenClassifications: this._options.hiddenClassifications,
-        classificationStyles: this._options.classificationStyles,
-      });
-
-      // Store the computed bounds for colorbar display
-      if (result.bounds) {
-        this._lastComputedBounds = result.bounds;
-      }
-
       this._pointClouds.set(id, {
         id,
         data,
-        colors: result.colors,
+        colors: this._computeColors(id, data, existing.styleOverride),
         coordinateOrigin: data.coordinateOrigin,
         visible: existing.visible,
         opacityOverride: existing.opacityOverride,
         chunkCount: existing.chunkCount,
+        styleOverride: existing.styleOverride,
       });
 
       // Recreate layers with new data
@@ -180,6 +206,7 @@ export class PointCloudManager {
       }
     }
     this._pointClouds.delete(id);
+    if (this._globalColorBounds.delete(id)) this._reselectBounds();
   }
 
   /**
@@ -239,26 +266,7 @@ export class PointCloudManager {
       classificationStylesChanged
     ) {
       for (const [id, pc] of this._pointClouds) {
-        const result = this._colorProcessor.getColorsWithBounds(pc.data, this._options.colorScheme, {
-          usePercentile: this._options.usePercentile,
-          colormap: this._options.colormap,
-          colorRange: this._options.colorRange,
-          hiddenClassifications: this._options.hiddenClassifications,
-          classificationStyles: this._options.classificationStyles,
-        });
-
-        // Store the computed bounds for colorbar display
-        if (result.bounds) {
-          this._lastComputedBounds = result.bounds;
-        }
-
-        this._pointClouds.set(id, {
-          ...pc,
-          colors: result.colors,
-          coordinateOrigin: pc.coordinateOrigin,
-          visible: pc.visible,
-          opacityOverride: pc.opacityOverride,
-        });
+        this._pointClouds.set(id, { ...pc, colors: this._computeColors(id, pc.data, pc.styleOverride) });
       }
     }
 
@@ -414,6 +422,42 @@ export class PointCloudManager {
   }
 
   /**
+   * Sets style overrides for one point cloud, replacing any it had. Fields left
+   * unset follow the manager-wide options, so `setPointCloudStyle(id, null)`
+   * (or `{}`) makes the cloud follow them entirely again. Colors are only
+   * recomputed when a color setting changed.
+   *
+   * @param id - Point cloud ID
+   * @param style - The overrides, or null to clear them
+   */
+  setPointCloudStyle(id: string, style: PointCloudStyleOverride | null): void {
+    const pc = this._pointClouds.get(id);
+    if (!pc) return;
+    const styleOverride = normalizeStyleOverride(style);
+    const colorsChanged = !sameColorOverrides(pc.styleOverride, styleOverride);
+    this._pointClouds.set(id, {
+      ...pc,
+      styleOverride,
+      colors: colorsChanged ? this._computeColors(id, pc.data, styleOverride) : pc.colors,
+    });
+    if (colorsChanged && !this._globalColorBounds.has(id)) this._reselectBounds();
+    this._createLayer(id);
+  }
+
+  /**
+   * Gets the style overrides of one point cloud.
+   *
+   * @param id - Point cloud ID
+   * @returns A copy of the overrides (empty when the cloud follows the
+   *   manager-wide options), or undefined if not found
+   */
+  getPointCloudStyle(id: string): PointCloudStyleOverride | undefined {
+    const pc = this._pointClouds.get(id);
+    if (!pc) return undefined;
+    return cloneStyleOverride(pc.styleOverride) ?? {};
+  }
+
+  /**
    * Clears all point clouds.
    */
   clear(): void {
@@ -424,6 +468,8 @@ export class PointCloudManager {
       }
     }
     this._pointClouds.clear();
+    this._globalColorBounds.clear();
+    this._lastComputedBounds = undefined;
   }
 
   /**
@@ -544,9 +590,10 @@ export class PointCloudManager {
     const pc = this._pointClouds.get(id);
     if (!pc) return;
 
-    const { data, colors, coordinateOrigin, visible, opacityOverride } = pc;
+    const { data, colors, coordinateOrigin, visible, opacityOverride, styleOverride } = pc;
     const elevationRange = this._options.elevationRange;
-    const zOffset = this._options.zOffset ?? 0;
+    const zOffset = styleOverride?.zOffset ?? this._options.zOffset ?? 0;
+    const pointSize = styleOverride?.pointSize ?? this._options.pointSize;
     const layerOpacity = opacityOverride ?? this._options.opacity;
 
     // Remove existing chunk layers first.
@@ -674,7 +721,7 @@ export class PointCloudManager {
             getColor: { value: chunkColors, size: 4 },
           },
         },
-        pointSize: this._options.pointSize,
+        pointSize,
         sizeUnits: 'pixels',
         opacity: layerOpacity,
         getNormal: [0, 0, 1],
@@ -686,7 +733,7 @@ export class PointCloudManager {
         // Force update when these values change
         updateTriggers: {
           getPosition: [elevationKey, zOffsetKey, chunkSize],
-          getColor: [elevationKey, chunkSize],
+          getColor: [elevationKey, chunkSize, colors],
         },
       });
 
@@ -704,4 +751,43 @@ export class PointCloudManager {
       this._createLayer(id);
     }
   }
+}
+
+/**
+ * Drops unset fields from a style override, returning null when nothing is
+ * overridden, so an empty override behaves exactly like no override.
+ */
+function normalizeStyleOverride(
+  style: PointCloudStyleOverride | null | undefined,
+): PointCloudStyleOverride | null {
+  if (!style) return null;
+  const entries = Object.entries(style).filter(([, value]) => value !== undefined);
+  return entries.length ? cloneStyleOverride(Object.fromEntries(entries) as PointCloudStyleOverride) : null;
+}
+
+/**
+ * Copies a style override, including its nested color settings, so the stored
+ * override never shares mutable objects with a caller.
+ */
+function cloneStyleOverride(style: PointCloudStyleOverride | null): PointCloudStyleOverride | null {
+  if (!style) return null;
+  const copy = { ...style };
+  if (style.colorRange) copy.colorRange = { ...style.colorRange };
+  if (typeof style.colorScheme === 'object') {
+    const { colors, domain } = style.colorScheme;
+    copy.colorScheme = {
+      ...style.colorScheme,
+      ...(colors && { colors: [...colors] }),
+      ...(domain && { domain: [domain[0], domain[1]] }),
+    };
+  }
+  return copy;
+}
+
+/** Whether two overrides have the same color settings, compared by value. */
+function sameColorOverrides(
+  a: PointCloudStyleOverride | null,
+  b: PointCloudStyleOverride | null,
+): boolean {
+  return COLOR_OVERRIDE_KEYS.every((key) => JSON.stringify(a?.[key]) === JSON.stringify(b?.[key]));
 }

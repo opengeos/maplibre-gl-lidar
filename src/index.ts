@@ -83,6 +83,7 @@ export type {
 
 export type {
   PointCloudLayerOptions,
+  PointCloudStyleOverride,
 } from './lib/layers/types';
 
 // Utility exports

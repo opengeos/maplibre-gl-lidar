@@ -104,3 +104,20 @@ export interface PointCloudLayerOptions {
    */
   onClick?: (info: PickedPointInfo) => void;
 }
+
+/**
+ * Style settings one point cloud can override. Each field left unset (or
+ * `undefined`) falls back to the manager-wide {@link PointCloudLayerOptions}.
+ */
+export interface PointCloudStyleOverride {
+  /** Color scheme for this point cloud */
+  colorScheme?: ColorScheme;
+  /** Colormap for elevation/intensity/gradient coloring of this point cloud */
+  colormap?: ColormapName;
+  /** Color range mapping for this point cloud */
+  colorRange?: ColorRangeConfig;
+  /** Point size in pixels for this point cloud */
+  pointSize?: number;
+  /** Z offset in meters for this point cloud */
+  zOffset?: number;
+}
