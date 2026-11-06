@@ -162,6 +162,11 @@ export class DeckOverlay {
    */
   destroy(): void {
     this._layers.clear();
+    // deck.gl creates its device with `_reuseDevices: true`, so luma.gl's
+    // destroy() never frees the WebGL context. Read the canvas before the
+    // control is removed and release the context explicitly; otherwise every
+    // mount/unmount leaks one context until garbage collection.
+    const canvas = this._overlay.getCanvas();
     try {
       this._map.removeControl(this._overlay);
     } catch {
@@ -172,6 +177,8 @@ export class DeckOverlay {
     // it here rather than leaving a dead canvas over the map.
     this._container?.remove();
     this._container = null;
+    const gl = canvas?.getContext('webgl2') ?? null;
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 
   /**
