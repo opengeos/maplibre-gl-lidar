@@ -1473,6 +1473,9 @@ export class CopcStreamingLoader {
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
+    // A fetch still in flight must not update a layer after teardown.
+    this._onPointsLoaded = undefined;
+
     // Clear timeout
     if (this._updateBatchTimeout) {
       clearTimeout(this._updateBatchTimeout);

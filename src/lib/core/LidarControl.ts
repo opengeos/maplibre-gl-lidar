@@ -992,6 +992,12 @@ export class LidarControl implements IControl {
       const { bounds, totalPoints, hasRGB, spacing } =
         await streamingLoader.initialize();
 
+      // The control may have been removed while initialize() was awaiting.
+      if (!this._map) {
+        streamingLoader.destroy();
+        throw createAbortError();
+      }
+
       this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
 
       // Track if auto Z offset has been applied for this streaming dataset
@@ -1143,6 +1149,13 @@ export class LidarControl implements IControl {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
+      // Teardown, not a load failure: no error state and no CORS fallback.
+      if (error.name === 'AbortError') {
+        this._streamingLoaders.delete(id);
+        this._copcViewportRequestIds.delete(id);
+        throw error;
+      }
+
       // Check if this is a CORS error - fallback to downloading the file (only for URL sources)
       const isCorsError =
         error.message.includes('CORS') ||
@@ -1233,6 +1246,12 @@ export class LidarControl implements IControl {
       // Initialize - reads ept.json metadata
       this._panelBuilder?.updateLoadingProgress(10, 'Initializing EPT dataset...');
       const { bounds, totalPoints, hasRGB, spacing } = await eptLoader.initialize();
+
+      // The control may have been removed while initialize() was awaiting.
+      if (!this._map) {
+        eptLoader.destroy();
+        throw createAbortError();
+      }
 
       this._panelBuilder?.updateLoadingProgress(20, 'Setting up streaming...');
 
@@ -1393,6 +1412,9 @@ export class LidarControl implements IControl {
         viewportManager.destroy();
         this._viewportManagers.delete(id);
       }
+
+      // Teardown, not a load failure: report nothing.
+      if (error.name === 'AbortError') throw error;
 
       const hasActiveStreaming = this._streamingLoaders.size > 0 || this._eptStreamingLoaders.size > 0;
 
@@ -3321,4 +3343,14 @@ export class LidarControl implements IControl {
   getPanelElement(): HTMLElement | null {
     return this._panel ?? null;
   }
+}
+
+/**
+ * Error thrown when a streaming load is cancelled because the control was
+ * removed from the map.
+ */
+function createAbortError(): Error {
+  const error = new Error('Point cloud load aborted: control was removed');
+  error.name = 'AbortError';
+  return error;
 }
