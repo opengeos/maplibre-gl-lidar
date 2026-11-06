@@ -25,11 +25,16 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      // Force laz-perf to use browser version (no fs/path requires)
-      'laz-perf': resolve(__dirname, 'node_modules/laz-perf/lib/web/index.js'),
-    },
+    alias: [
+      { find: '@', replacement: resolve(__dirname, 'src') },
+      // Force laz-perf to use browser version (no fs/path requires). Match the
+      // bare specifier only, so `laz-perf/lib/web/laz-perf.wasm?url` still
+      // resolves to the file inside the package.
+      {
+        find: /^laz-perf$/,
+        replacement: resolve(__dirname, 'node_modules/laz-perf/lib/web/index.js'),
+      },
+    ],
   },
   assetsInclude: ['**/*.wasm'],
   build: {

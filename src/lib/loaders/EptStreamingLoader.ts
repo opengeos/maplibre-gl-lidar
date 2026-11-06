@@ -1,5 +1,5 @@
 import { load } from '@loaders.gl/core';
-import { LASLoader } from '@loaders.gl/las';
+import { LAZRsLoader } from '@loaders.gl/las';
 import proj4 from 'proj4';
 import type {
   NodeKey,
@@ -968,7 +968,7 @@ export class EptStreamingLoader {
     startIndex: number
   ): Promise<void> {
     // Load LAZ file using loaders.gl
-    const data = await load(url, LASLoader, {
+    const data = await load(url, LAZRsLoader, {
       las: {
         shape: 'mesh',
         fp64: false,

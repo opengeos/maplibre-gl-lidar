@@ -1,6 +1,7 @@
 import { Copc, Hierarchy, Getter } from 'copc';
 import type { Copc as CopcType } from 'copc';
-import { createLazPerf, type LazPerf } from 'laz-perf';
+import type { LazPerf } from 'laz-perf';
+import { getLazPerf } from './laz-perf';
 import proj4 from 'proj4';
 
 // Register common projected coordinate systems that might not have WKT in files
@@ -100,23 +101,6 @@ function toUint8Color(value: number): number {
   return value > 255 ? value >> 8 : value;
 }
 
-// LazPerf instance for COPC decompression
-let lazPerfInstance: LazPerf | null = null;
-
-async function getLazPerf(): Promise<LazPerf> {
-  if (!lazPerfInstance) {
-    lazPerfInstance = await createLazPerf({
-      locateFile: (path: string) => {
-        // Load WASM from CDN for reliable loading in all environments
-        if (path.endsWith('.wasm')) {
-          return 'https://unpkg.com/laz-perf@0.0.7/lib/web/laz-perf.wasm';
-        }
-        return path;
-      },
-    });
-  }
-  return lazPerfInstance;
-}
 
 /**
  * Extracts the PROJCS section from a WKT string (handles COMPD_CS)
