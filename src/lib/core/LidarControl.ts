@@ -1212,6 +1212,8 @@ export class LidarControl implements IControl {
         this._streamingLoaders.delete(id);
       }
       this._copcViewportRequestIds.delete(id);
+      this._viewportManagers.get(id)?.destroy();
+      this._viewportManagers.delete(id);
       this._emitWithData('loaderror', { error });
       throw error;
     }

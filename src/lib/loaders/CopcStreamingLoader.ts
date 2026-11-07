@@ -747,7 +747,7 @@ export class CopcStreamingLoader {
   async loadQueuedNodes(): Promise<void> {
     // A region load has sized its request against the free buffer space;
     // viewport nodes wait until it finishes.
-    if (this._paused || this._regionLoading) return;
+    if (this._destroyed || this._paused || this._regionLoading) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&
@@ -984,6 +984,9 @@ export class CopcStreamingLoader {
       await Promise.all(
         Array.from({ length: Math.max(1, this._options.maxConcurrentRequests) }, worker)
       );
+      // destroy() during the load leaves nodes unloaded: do not report the
+      // region as loaded.
+      if (this._destroyed) throw createAbortError('Region load aborted: loader was destroyed');
       // A node that failed leaves the region incomplete: report it rather
       // than a full-resolution result with missing points.
       const failed = pending.filter((node) => node.state === 'error');
@@ -994,7 +997,7 @@ export class CopcStreamingLoader {
       result = { nodes: region.length, points: total };
     } finally {
       this._regionLoading = false;
-      void this.loadQueuedNodes();
+      if (!this._destroyed) void this.loadQueuedNodes();
     }
     return result;
   }
@@ -1502,4 +1505,13 @@ export class CopcStreamingLoader {
     this._classifications = null;
     this._extraAttributes = {};
   }
+}
+
+/**
+ * Error for work cancelled by destroy().
+ */
+function createAbortError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
 }

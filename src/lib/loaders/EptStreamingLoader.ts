@@ -696,6 +696,8 @@ export class EptStreamingLoader {
 
     // Ensure root hierarchy is loaded
     await this._ensureHierarchyLoaded();
+    // destroy() may have run during the hierarchy fetch.
+    if (this._destroyed) return [];
 
     const targetDepth = viewport.targetDepth;
 
@@ -739,6 +741,7 @@ export class EptStreamingLoader {
 
       // Fire requests in parallel
       await Promise.all(subtreesToProcess.map(subtreeKey => this._loadHierarchy(subtreeKey)));
+      if (this._destroyed) return [];
       subtreesToProcess.forEach(key => loadedSubtrees.add(key));
 
       // If we've loaded enough subtrees total, stop
@@ -821,7 +824,7 @@ export class EptStreamingLoader {
    * Loads nodes from the queue, respecting point budget and concurrency limits.
    */
   async loadQueuedNodes(): Promise<void> {
-    if (this._paused) return;
+    if (this._destroyed || this._paused) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&

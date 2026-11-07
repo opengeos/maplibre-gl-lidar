@@ -109,6 +109,23 @@ describe('streaming load abort while the control stays mounted', () => {
     expect(control.getState().loading).toBe(false);
     expect(control.getState().error).toContain('aborted');
   });
+  it('reports an EPT fetch abort as a load failure', async () => {
+    const control = new LidarControl();
+    (control as unknown as ControlInternals)._map = {};
+    const abort = new Error('The user aborted a request.');
+    abort.name = 'AbortError';
+    vi.spyOn(EptStreamingLoader.prototype, 'initialize').mockRejectedValue(abort);
+    const loadError = vi.fn();
+    control.on('loaderror', loadError);
+
+    await expect(
+      control.loadPointCloudEptStreaming('https://example.com/ept.json')
+    ).rejects.toBe(abort);
+
+    expect(loadError).toHaveBeenCalledTimes(1);
+    expect(control.getState().loading).toBe(false);
+    expect(control.getState().error).toContain('aborted');
+  });
 });
 
 describe('CopcStreamingLoader node load finishing after destroy()', () => {
@@ -140,5 +157,32 @@ describe('CopcStreamingLoader node load finishing after destroy()', () => {
 
     expect(extract).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('CopcStreamingLoader.loadRegion interrupted by destroy()', () => {
+  it('rejects instead of reporting the region as loaded', async () => {
+    const loader = new CopcStreamingLoader('https://example.com/a.copc.laz');
+    const internals = loader as unknown as Record<string, unknown>;
+    internals._isInitialized = true;
+    internals._loadedHierarchyKeys = new Set(['0-0-0-0']);
+    (internals._options as { pointBudget: number }).pointBudget = 10;
+    internals._positions = new Float32Array(30);
+    internals._intensities = new Float32Array(10);
+    internals._classifications = new Uint8Array(10);
+    (internals._nodeCache as Map<string, unknown>).set('0-0-0-0', {
+      key: '0-0-0-0',
+      keyArray: [0, 0, 0, 0],
+      state: 'pending',
+      pointCount: 4,
+      boundsWgs84: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+    });
+    internals._loadNode = async () => {
+      loader.destroy();
+    };
+
+    await expect(
+      loader.loadRegion([0, 0, 1, 1])
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
