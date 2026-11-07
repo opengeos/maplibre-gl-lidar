@@ -275,6 +275,8 @@ export class CopcStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  // Set by destroy(); in-flight node loads check it after every await.
+  private _destroyed = false;
 
   /**
    * Creates a new CopcStreamingLoader instance.
@@ -1048,6 +1050,8 @@ export class CopcStreamingLoader {
         hierarchyNode,
         { lazPerf: this._lazPerf! }
       );
+      // The buffers are released once destroy() has run.
+      if (this._destroyed) return;
 
       // Detect dimensions on first node
       if (!this._dimensionsDetected) {
@@ -1077,6 +1081,7 @@ export class CopcStreamingLoader {
       // Schedule batched layer update
       this._scheduleLayerUpdate();
     } catch (error) {
+      if (this._destroyed) return;
       node.state = 'error';
       node.error = error instanceof Error ? error.message : String(error);
       // Give back the reserved space when it is the last reservation; any
@@ -1090,7 +1095,7 @@ export class CopcStreamingLoader {
     } finally {
       this._activeRequests--;
       // Continue loading more nodes
-      this.loadQueuedNodes();
+      if (!this._destroyed) this.loadQueuedNodes();
     }
   }
 
@@ -1473,7 +1478,9 @@ export class CopcStreamingLoader {
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
-    // A fetch still in flight must not update a layer after teardown.
+    // A fetch still in flight must not touch the buffers or update a layer
+    // after teardown.
+    this._destroyed = true;
     this._onPointsLoaded = undefined;
 
     // Clear timeout

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Copc } from 'copc';
 import {
   CopcStreamingLoader,
   EptStreamingLoader,
@@ -6,7 +7,14 @@ import {
 } from '../src/index';
 
 type ControlInternals = { _map?: unknown };
-type LoaderInternals = { _performLayerUpdate: () => void };
+type LoaderInternals = {
+  _performLayerUpdate: () => void;
+  _loadNode: (node: Record<string, unknown>) => Promise<void>;
+  _extractPointData: () => Promise<void>;
+  _source: unknown;
+  _copc: unknown;
+  _lazPerf: unknown;
+};
 
 const initResult = {
   bounds: { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 },
@@ -80,5 +88,57 @@ describe.each([
     (loader as unknown as LoaderInternals)._performLayerUpdate();
 
     expect(onPointsLoaded).not.toHaveBeenCalled();
+  });
+});
+
+describe('streaming load abort while the control stays mounted', () => {
+  it('reports a COPC fetch abort as a load failure', async () => {
+    const control = new LidarControl();
+    (control as unknown as ControlInternals)._map = {};
+    const abort = new Error('The user aborted a request.');
+    abort.name = 'AbortError';
+    vi.spyOn(CopcStreamingLoader.prototype, 'initialize').mockRejectedValue(abort);
+    const loadError = vi.fn();
+    control.on('loaderror', loadError);
+
+    await expect(
+      control.loadPointCloudStreaming(new ArrayBuffer(8))
+    ).rejects.toBe(abort);
+
+    expect(loadError).toHaveBeenCalledTimes(1);
+    expect(control.getState().loading).toBe(false);
+    expect(control.getState().error).toContain('aborted');
+  });
+});
+
+describe('CopcStreamingLoader node load finishing after destroy()', () => {
+  it('does not extract into released buffers or report an error', async () => {
+    const loader = new CopcStreamingLoader('https://example.com/a.copc.laz');
+    const internals = loader as unknown as LoaderInternals;
+    internals._source = 'https://example.com/a.copc.laz';
+    internals._copc = {};
+    internals._lazPerf = {};
+    let resolveView: (view: unknown) => void = () => {};
+    vi.spyOn(Copc, 'loadPointDataView').mockReturnValue(
+      new Promise((resolve) => {
+        resolveView = resolve;
+      }) as ReturnType<typeof Copc.loadPointDataView>
+    );
+    const extract = vi.spyOn(internals, '_extractPointData');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const pending = internals._loadNode({
+      key: '0-0-0-0',
+      state: 'pending',
+      pointCount: 4,
+      pointDataOffset: 0,
+      pointDataLength: 16,
+    });
+    loader.destroy();
+    resolveView({ dimensions: {} });
+    await pending;
+
+    expect(extract).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

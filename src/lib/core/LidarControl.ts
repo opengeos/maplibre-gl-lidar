@@ -1149,10 +1149,15 @@ export class LidarControl implements IControl {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
-      // Teardown, not a load failure: no error state and no CORS fallback.
-      if (error.name === 'AbortError') {
+      // The control was removed mid-load: release this dataset's resources
+      // and rethrow without error state or CORS fallback. Any other abort
+      // (for example a cancelled fetch) is a load failure, handled below.
+      if (error.name === 'AbortError' && !this._map) {
+        this._streamingLoaders.get(id)?.destroy();
         this._streamingLoaders.delete(id);
         this._copcViewportRequestIds.delete(id);
+        this._viewportManagers.get(id)?.destroy();
+        this._viewportManagers.delete(id);
         throw error;
       }
 
@@ -1413,8 +1418,9 @@ export class LidarControl implements IControl {
         this._viewportManagers.delete(id);
       }
 
-      // Teardown, not a load failure: report nothing.
-      if (error.name === 'AbortError') throw error;
+      // The control was removed mid-load: the resources are released above,
+      // so report nothing. Any other abort is a load failure.
+      if (error.name === 'AbortError' && !this._map) throw error;
 
       const hasActiveStreaming = this._streamingLoaders.size > 0 || this._eptStreamingLoaders.size > 0;
 

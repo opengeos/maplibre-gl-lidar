@@ -251,6 +251,8 @@ export class EptStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  // Set by destroy(); in-flight node loads check it after every await.
+  private _destroyed = false;
   private _isResetting: boolean = false;
 
   /**
@@ -874,6 +876,7 @@ export class EptStreamingLoader {
         // Binary format - load and parse directly
         await this._loadBinaryNode(dataUrl, node, startIndex);
       }
+      if (this._destroyed) return;
 
       node.state = 'loaded';
       this._totalLoadedNodes++;
@@ -883,6 +886,7 @@ export class EptStreamingLoader {
 
       this._scheduleLayerUpdate();
     } catch (error) {
+      if (this._destroyed) return;
       // Release the reserved space only when no later node has reserved after
       // it: otherwise a later node could be handed an overlapping range. A gap
       // left behind is reclaimed once no request is in flight
@@ -916,8 +920,10 @@ export class EptStreamingLoader {
       }
     } finally {
       this._activeRequests--;
-      this._reclaimFailedReservations();
-      this.loadQueuedNodes();
+      if (!this._destroyed) {
+        this._reclaimFailedReservations();
+        this.loadQueuedNodes();
+      }
     }
   }
 
@@ -975,6 +981,8 @@ export class EptStreamingLoader {
       },
       worker: false,
     }) as any;
+    // The buffers are released once destroy() has run.
+    if (this._destroyed) return;
 
     // Get point data from the loaded result (loaders.gl mesh format)
     const positionAttr = data.attributes?.POSITION || data.attributes?.positions;
@@ -1077,6 +1085,8 @@ export class EptStreamingLoader {
     }
 
     const buffer = await response.arrayBuffer();
+    // The buffers are released once destroy() has run.
+    if (this._destroyed) return;
     const dataView = new DataView(buffer);
 
     // Find dimension getters
@@ -1553,7 +1563,9 @@ export class EptStreamingLoader {
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
-    // A fetch still in flight must not update a layer after teardown.
+    // A fetch still in flight must not touch the buffers or update a layer
+    // after teardown.
+    this._destroyed = true;
     this._onPointsLoaded = undefined;
 
     if (this._updateBatchTimeout) {
