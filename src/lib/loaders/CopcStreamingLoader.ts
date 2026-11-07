@@ -976,7 +976,8 @@ export class CopcStreamingLoader {
       }
       let next = 0;
       const worker = async () => {
-        while (next < pending.length) {
+        // Stop taking nodes once destroy() has run.
+        while (!this._destroyed && next < pending.length) {
           const node = pending[next++];
           if (node.state === 'pending') await this._loadNode(node);
         }

@@ -177,12 +177,23 @@ describe('CopcStreamingLoader.loadRegion interrupted by destroy()', () => {
       pointCount: 4,
       boundsWgs84: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
     });
-    internals._loadNode = async () => {
+    (internals._nodeCache as Map<string, unknown>).set('1-0-0-0', {
+      key: '1-0-0-0',
+      keyArray: [1, 0, 0, 0],
+      state: 'pending',
+      pointCount: 4,
+      boundsWgs84: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+    });
+    (internals._options as { maxConcurrentRequests: number }).maxConcurrentRequests = 1;
+    const loadNode = vi.fn(async () => {
       loader.destroy();
-    };
+    });
+    internals._loadNode = loadNode;
 
     await expect(
       loader.loadRegion([0, 0, 1, 1])
     ).rejects.toMatchObject({ name: 'AbortError' });
+    // The worker stops taking nodes once destroy() has run.
+    expect(loadNode).toHaveBeenCalledTimes(1);
   });
 });
