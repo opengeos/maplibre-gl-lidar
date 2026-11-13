@@ -6,8 +6,15 @@ import { DECK_CANVAS_CLASS, DeckOverlay } from '../src/index';
 
 vi.mock('@deck.gl/maplibre', () => {
   class MapLibreOverlay {
+    private _canvas: HTMLCanvasElement | null = null;
     onAdd(): HTMLDivElement {
-      return document.createElement('div');
+      const container = document.createElement('div');
+      this._canvas = document.createElement('canvas');
+      container.appendChild(this._canvas);
+      return container;
+    }
+    getCanvas(): HTMLCanvasElement | null {
+      return this._canvas;
     }
     onRemove(): void {}
     setProps(): void {}
@@ -85,5 +92,31 @@ describe('DeckOverlay canvas stacking', () => {
     const children = Array.from(canvasContainer.children);
     const deckCanvas = canvasContainer.querySelector(`.${DECK_CANVAS_CLASS}`)!;
     expect(children.indexOf(deckCanvas)).toBeLessThan(children.indexOf(marker));
+  });
+
+  it('releases the deck WebGL context on destroy', () => {
+    const { map, canvasContainer } = setupMap();
+    const loseContext = vi.fn();
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          getExtension: (name: string) =>
+            name === 'WEBGL_lose_context' ? { loseContext } : null,
+        } as unknown as WebGL2RenderingContext;
+      });
+
+    const overlay = new DeckOverlay(map);
+    const deckCanvas = canvasContainer.querySelector(
+      `.${DECK_CANVAS_CLASS} canvas`
+    );
+    expect(deckCanvas).not.toBeNull();
+
+    overlay.destroy();
+
+    expect(getContext).toHaveBeenCalledWith('webgl2');
+    expect(getContext.mock.contexts[0]).toBe(deckCanvas);
+    expect(loseContext).toHaveBeenCalledTimes(1);
+    getContext.mockRestore();
   });
 });

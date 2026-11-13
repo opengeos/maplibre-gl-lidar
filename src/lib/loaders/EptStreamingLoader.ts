@@ -1,5 +1,5 @@
 import { load } from '@loaders.gl/core';
-import { LASLoader } from '@loaders.gl/las';
+import { LAZRsLoader } from '@loaders.gl/las';
 import proj4 from 'proj4';
 import type {
   NodeKey,
@@ -251,6 +251,8 @@ export class EptStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  // Set by destroy(); in-flight node loads check it after every await.
+  private _destroyed = false;
   private _isResetting: boolean = false;
 
   /**
@@ -694,6 +696,8 @@ export class EptStreamingLoader {
 
     // Ensure root hierarchy is loaded
     await this._ensureHierarchyLoaded();
+    // destroy() may have run during the hierarchy fetch.
+    if (this._destroyed) return [];
 
     const targetDepth = viewport.targetDepth;
 
@@ -737,6 +741,7 @@ export class EptStreamingLoader {
 
       // Fire requests in parallel
       await Promise.all(subtreesToProcess.map(subtreeKey => this._loadHierarchy(subtreeKey)));
+      if (this._destroyed) return [];
       subtreesToProcess.forEach(key => loadedSubtrees.add(key));
 
       // If we've loaded enough subtrees total, stop
@@ -819,7 +824,7 @@ export class EptStreamingLoader {
    * Loads nodes from the queue, respecting point budget and concurrency limits.
    */
   async loadQueuedNodes(): Promise<void> {
-    if (this._paused) return;
+    if (this._destroyed || this._paused) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&
@@ -874,6 +879,7 @@ export class EptStreamingLoader {
         // Binary format - load and parse directly
         await this._loadBinaryNode(dataUrl, node, startIndex);
       }
+      if (this._destroyed) return;
 
       node.state = 'loaded';
       this._totalLoadedNodes++;
@@ -883,6 +889,7 @@ export class EptStreamingLoader {
 
       this._scheduleLayerUpdate();
     } catch (error) {
+      if (this._destroyed) return;
       // Release the reserved space only when no later node has reserved after
       // it: otherwise a later node could be handed an overlapping range. A gap
       // left behind is reclaimed once no request is in flight
@@ -916,8 +923,10 @@ export class EptStreamingLoader {
       }
     } finally {
       this._activeRequests--;
-      this._reclaimFailedReservations();
-      this.loadQueuedNodes();
+      if (!this._destroyed) {
+        this._reclaimFailedReservations();
+        this.loadQueuedNodes();
+      }
     }
   }
 
@@ -968,13 +977,15 @@ export class EptStreamingLoader {
     startIndex: number
   ): Promise<void> {
     // Load LAZ file using loaders.gl
-    const data = await load(url, LASLoader, {
+    const data = await load(url, LAZRsLoader, {
       las: {
         shape: 'mesh',
         fp64: false,
       },
       worker: false,
     }) as any;
+    // The buffers are released once destroy() has run.
+    if (this._destroyed) return;
 
     // Get point data from the loaded result (loaders.gl mesh format)
     const positionAttr = data.attributes?.POSITION || data.attributes?.positions;
@@ -1077,6 +1088,8 @@ export class EptStreamingLoader {
     }
 
     const buffer = await response.arrayBuffer();
+    // The buffers are released once destroy() has run.
+    if (this._destroyed) return;
     const dataView = new DataView(buffer);
 
     // Find dimension getters
@@ -1553,6 +1566,11 @@ export class EptStreamingLoader {
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
+    // A fetch still in flight must not touch the buffers or update a layer
+    // after teardown.
+    this._destroyed = true;
+    this._onPointsLoaded = undefined;
+
     if (this._updateBatchTimeout) {
       clearTimeout(this._updateBatchTimeout);
     }

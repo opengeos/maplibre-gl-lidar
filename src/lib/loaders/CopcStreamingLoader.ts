@@ -1,6 +1,7 @@
 import { Copc, Hierarchy, Getter } from 'copc';
 import type { Copc as CopcType } from 'copc';
-import { createLazPerf, type LazPerf } from 'laz-perf';
+import type { LazPerf } from 'laz-perf';
+import { getLazPerf } from './laz-perf';
 import proj4 from 'proj4';
 
 // Register common projected coordinate systems that might not have WKT in files
@@ -100,23 +101,6 @@ function toUint8Color(value: number): number {
   return value > 255 ? value >> 8 : value;
 }
 
-// LazPerf instance for COPC decompression
-let lazPerfInstance: LazPerf | null = null;
-
-async function getLazPerf(): Promise<LazPerf> {
-  if (!lazPerfInstance) {
-    lazPerfInstance = await createLazPerf({
-      locateFile: (path: string) => {
-        // Load WASM from CDN for reliable loading in all environments
-        if (path.endsWith('.wasm')) {
-          return 'https://unpkg.com/laz-perf@0.0.7/lib/web/laz-perf.wasm';
-        }
-        return path;
-      },
-    });
-  }
-  return lazPerfInstance;
-}
 
 /**
  * Extracts the PROJCS section from a WKT string (handles COMPD_CS)
@@ -291,6 +275,8 @@ export class CopcStreamingLoader {
   private _pendingLayerUpdate: boolean = false;
   private _updateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _onPointsLoaded?: (data: PointCloudData) => void;
+  // Set by destroy(); in-flight node loads check it after every await.
+  private _destroyed = false;
 
   /**
    * Creates a new CopcStreamingLoader instance.
@@ -761,7 +747,7 @@ export class CopcStreamingLoader {
   async loadQueuedNodes(): Promise<void> {
     // A region load has sized its request against the free buffer space;
     // viewport nodes wait until it finishes.
-    if (this._paused || this._regionLoading) return;
+    if (this._destroyed || this._paused || this._regionLoading) return;
     while (
       this._loadingQueue.length > 0 &&
       this._activeRequests < this._options.maxConcurrentRequests &&
@@ -990,7 +976,8 @@ export class CopcStreamingLoader {
       }
       let next = 0;
       const worker = async () => {
-        while (next < pending.length) {
+        // Stop taking nodes once destroy() has run.
+        while (!this._destroyed && next < pending.length) {
           const node = pending[next++];
           if (node.state === 'pending') await this._loadNode(node);
         }
@@ -998,6 +985,9 @@ export class CopcStreamingLoader {
       await Promise.all(
         Array.from({ length: Math.max(1, this._options.maxConcurrentRequests) }, worker)
       );
+      // destroy() during the load leaves nodes unloaded: do not report the
+      // region as loaded.
+      if (this._destroyed) throw createAbortError('Region load aborted: loader was destroyed');
       // A node that failed leaves the region incomplete: report it rather
       // than a full-resolution result with missing points.
       const failed = pending.filter((node) => node.state === 'error');
@@ -1008,7 +998,7 @@ export class CopcStreamingLoader {
       result = { nodes: region.length, points: total };
     } finally {
       this._regionLoading = false;
-      void this.loadQueuedNodes();
+      if (!this._destroyed) void this.loadQueuedNodes();
     }
     return result;
   }
@@ -1064,6 +1054,8 @@ export class CopcStreamingLoader {
         hierarchyNode,
         { lazPerf: this._lazPerf! }
       );
+      // The buffers are released once destroy() has run.
+      if (this._destroyed) return;
 
       // Detect dimensions on first node
       if (!this._dimensionsDetected) {
@@ -1093,6 +1085,7 @@ export class CopcStreamingLoader {
       // Schedule batched layer update
       this._scheduleLayerUpdate();
     } catch (error) {
+      if (this._destroyed) return;
       node.state = 'error';
       node.error = error instanceof Error ? error.message : String(error);
       // Give back the reserved space when it is the last reservation; any
@@ -1106,7 +1099,7 @@ export class CopcStreamingLoader {
     } finally {
       this._activeRequests--;
       // Continue loading more nodes
-      this.loadQueuedNodes();
+      if (!this._destroyed) this.loadQueuedNodes();
     }
   }
 
@@ -1489,6 +1482,11 @@ export class CopcStreamingLoader {
    * Destroys the streaming loader and cleans up resources.
    */
   destroy(): void {
+    // A fetch still in flight must not touch the buffers or update a layer
+    // after teardown.
+    this._destroyed = true;
+    this._onPointsLoaded = undefined;
+
     // Clear timeout
     if (this._updateBatchTimeout) {
       clearTimeout(this._updateBatchTimeout);
@@ -1508,4 +1506,13 @@ export class CopcStreamingLoader {
     this._classifications = null;
     this._extraAttributes = {};
   }
+}
+
+/**
+ * Error for work cancelled by destroy().
+ */
+function createAbortError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
 }

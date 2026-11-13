@@ -1,8 +1,9 @@
 import { Copc, Hierarchy, Getter, Las } from 'copc';
 import type { Copc as CopcType } from 'copc';
-import { createLazPerf, type LazPerf } from 'laz-perf';
+import type { LazPerf } from 'laz-perf';
+import { getLazPerf } from './laz-perf';
 import { load } from '@loaders.gl/core';
-import { LASLoader } from '@loaders.gl/las';
+import { LAZRsLoader } from '@loaders.gl/las';
 import proj4 from 'proj4';
 import type { PointCloudData, ExtraPointAttributes, AttributeArray, PointNodeRange } from './types';
 import type { PointCloudBounds } from '../core/types';
@@ -69,23 +70,6 @@ function createAttributeArray(type: AttributeConfig['arrayType'], length: number
   }
 }
 
-// LazPerf instance for COPC decompression
-let lazPerfInstance: LazPerf | null = null;
-
-async function getLazPerf(): Promise<LazPerf> {
-  if (!lazPerfInstance) {
-    lazPerfInstance = await createLazPerf({
-      locateFile: (path: string) => {
-        // Load WASM from CDN for reliable loading in all environments
-        if (path.endsWith('.wasm')) {
-          return 'https://unpkg.com/laz-perf@0.0.7/lib/web/laz-perf.wasm';
-        }
-        return path;
-      },
-    });
-  }
-  return lazPerfInstance;
-}
 
 /**
  * Creates a getter function from an ArrayBuffer for copc.js
@@ -540,8 +524,8 @@ export class PointCloudLoader {
     this._reportProgress(20, 'Parsing point cloud data...');
     await this._yieldToUI();
 
-    // Load using loaders.gl LASLoader
-    const data = await load(buffer, LASLoader, {
+    // Load using loaders.gl LAZRsLoader
+    const data = await load(buffer, LAZRsLoader, {
       las: {
         shape: 'mesh',
         fp64: false,
