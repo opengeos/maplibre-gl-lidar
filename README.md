@@ -602,7 +602,7 @@ control.clearPinnedRegion(cloudId); // let the area stream normally again
 
 ### Which URLs stream
 
-`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. The same rules are exported, so a host can treat a URL the way the control will (for example, to size-check only whole downloads):
+`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. If starting a COPC stream fails with a network or CORS error, it falls back to downloading the whole file. The same rules (the initial routing) are exported, so a host can treat a URL the way the control will (for example, to size-check only whole downloads):
 
 ```typescript
 import { isStreamedPointCloudUrl, isEptUrl, isCopcUrl } from "maplibre-gl-lidar";

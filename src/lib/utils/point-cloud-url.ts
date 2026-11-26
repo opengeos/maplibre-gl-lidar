@@ -32,9 +32,15 @@ export function isCopcUrl(url: string): boolean {
 }
 
 /**
- * Whether {@link LidarControl.loadPointCloud} streams a URL rather than
- * downloading the whole file: EPT datasets always stream, and remote COPC
+ * Whether {@link LidarControl.loadPointCloud} starts by streaming a URL rather
+ * than downloading the whole file: EPT datasets always stream, and remote COPC
  * files stream unless the loading mode is `'full'`.
+ *
+ * This predicts the initial routing only. If starting a COPC stream fails with
+ * a network or CORS error (such as "Failed to fetch"), the control falls back
+ * to downloading the whole file, with no size limit. A host that size-checks
+ * only whole downloads should treat a streamed COPC URL as one that may still
+ * be downloaded whole.
  *
  * @param url - Point cloud URL
  * @param loadingMode - The loading mode the load will use (the `loadingMode`
