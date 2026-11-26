@@ -602,14 +602,19 @@ control.clearPinnedRegion(cloudId); // let the area stream normally again
 
 ### Which URLs stream
 
-`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. If starting a COPC stream fails with a network or CORS error, it falls back to downloading the whole file. The same rules (the initial routing) are exported, so a host can treat a URL the way the control will (for example, to size-check only whole downloads):
+`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. If starting a COPC stream fails with a network or CORS error, it falls back to downloading the whole file, with no size limit.
+
+The same rules (the initial routing) are exported so a host can treat a URL the way the control will. Pass the effective loading mode: the `loadingMode` option given to `loadPointCloud`, else the control's `copcLoadingMode` (default `'dynamic'`). Because of the fallback, a host that caps download size should check streamed COPC URLs too; only EPT datasets never download whole.
 
 ```typescript
-import { isStreamedPointCloudUrl, isEptUrl, isCopcUrl } from "maplibre-gl-lidar";
+import { LidarControl, isStreamedPointCloudUrl } from "maplibre-gl-lidar";
 
-isStreamedPointCloudUrl("https://example.com/a.copc.laz"); // true
-isStreamedPointCloudUrl("https://example.com/a.copc.laz", "full"); // false
-isStreamedPointCloudUrl("https://example.com/a.laz"); // false
+const copcLoadingMode = "full";
+const control = new LidarControl({ copcLoadingMode });
+// Pass the same mode the control loads with:
+isStreamedPointCloudUrl("https://example.com/a.copc.laz", copcLoadingMode); // false: downloaded whole
+isStreamedPointCloudUrl("https://example.com/a.copc.laz", "dynamic"); // true (may still fall back)
+isStreamedPointCloudUrl("https://example.com/data/ept.json"); // true
 ```
 
 ### EPT (Entwine Point Tile) Support
