@@ -39,6 +39,7 @@ import {
   getClassificationName,
   type ClassificationStyles,
 } from '../colorizers/ColorScheme';
+import { isCopcUrl, isEptUrl } from '../utils/point-cloud-url';
 
 /**
  * Default options for the LidarControl
@@ -722,26 +723,17 @@ export class LidarControl implements IControl {
     source: string | File | ArrayBuffer,
     options?: { loadingMode?: CopcLoadingMode }
   ): Promise<PointCloudInfo> {
-    // Check if this is an EPT dataset (URL ending with ept.json)
-    const isEptUrl =
-      typeof source === 'string' &&
-      (source.endsWith('/ept.json') || source.includes('/ept.json?'));
-
-    // Route EPT URLs to EPT streaming loader
-    if (isEptUrl) {
-      return this.loadPointCloudEptStreaming(source as string);
+    // Route EPT URLs (ending with ept.json) to the EPT streaming loader.
+    // The URL rules live in utils/point-cloud-url so hosts can share them.
+    if (typeof source === 'string' && isEptUrl(source)) {
+      return this.loadPointCloudEptStreaming(source);
     }
 
     // Check if this is a COPC file
-    const isCopcUrl =
-      typeof source === 'string' &&
-      (source.startsWith('http://') || source.startsWith('https://')) &&
-      /\.copc\./i.test(source);
-
     const isCopcFile =
       source instanceof File && /\.copc\./i.test(source.name);
 
-    const isCopc = isCopcUrl || isCopcFile;
+    const isCopc = (typeof source === 'string' && isCopcUrl(source)) || isCopcFile;
 
     // Determine loading mode:
     // - If explicitly specified in options, use that

@@ -540,6 +540,15 @@ console.log("Hidden:", hidden); // [7, 18]
 | 9 | Water |
 | 17 | Bridge Deck |
 
+The default colour for every code is exported as `CLASSIFICATION_COLORS` (a `Record<number, [r, g, b]>`, from a module with no dependencies), so a host can draw a matching legend or class picker without copying the table:
+
+```typescript
+import { CLASSIFICATION_COLORS, getClassificationName } from "maplibre-gl-lidar";
+
+const ground = CLASSIFICATION_COLORS[2]; // [165, 113, 78]
+const label = getClassificationName(2); // "Ground"
+```
+
 ### Dynamic COPC Streaming
 
 For large COPC (Cloud Optimized Point Cloud) files, dynamic streaming loads only the points visible in the current viewport, dramatically reducing initial load time and memory usage.
@@ -589,6 +598,18 @@ const { nodes, points } = await control.loadRegion(cloudId, [-123.074, 44.054, -
   maxPoints: 4_000_000,
 });
 control.clearPinnedRegion(cloudId); // let the area stream normally again
+```
+
+### Which URLs stream
+
+`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. The same rules are exported, so a host can treat a URL the way the control will (for example, to size-check only whole downloads):
+
+```typescript
+import { isStreamedPointCloudUrl, isEptUrl, isCopcUrl } from "maplibre-gl-lidar";
+
+isStreamedPointCloudUrl("https://example.com/a.copc.laz"); // true
+isStreamedPointCloudUrl("https://example.com/a.copc.laz", "full"); // false
+isStreamedPointCloudUrl("https://example.com/a.laz"); // false
 ```
 
 ### EPT (Entwine Point Tile) Support

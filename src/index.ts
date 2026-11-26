@@ -15,6 +15,7 @@ export {
   getClassificationColor,
   type ClassificationStyles,
 } from './lib/colorizers/ColorScheme';
+export { CLASSIFICATION_COLORS } from './lib/colorizers/classification-colors';
 export { COLORMAPS, COLORMAP_NAMES, COLORMAP_LABELS, getColormap } from './lib/colorizers/Colormaps';
 
 // Tools exports
@@ -106,6 +107,7 @@ export {
   parseLidarSharePayloadFromUrl,
   hasLidarShareParams,
 } from './lib/utils';
+export { isEptUrl, isCopcUrl, isStreamedPointCloudUrl } from './lib/utils/point-cloud-url';
 
 export type {
   LidarShareMapState,

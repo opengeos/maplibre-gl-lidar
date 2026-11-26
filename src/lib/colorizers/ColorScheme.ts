@@ -1,33 +1,11 @@
 import type { PointCloudData } from '../loaders/types';
 import type { ColorScheme, ColorSchemeConfig, ColormapName, ColorRangeConfig } from '../core/types';
-import type { RGBColor, ColorRamp, ClassificationColorMap } from './types';
+import type { RGBColor, ColorRamp } from './types';
 import { computePercentileBounds } from '../utils/helpers';
 import { COLORMAPS } from './Colormaps';
+import { CLASSIFICATION_COLORS } from './classification-colors';
 
-/**
- * ASPRS LAS classification standard colors
- */
-export const CLASSIFICATION_COLORS: ClassificationColorMap = {
-  0: [128, 128, 128],   // Created, never classified
-  1: [128, 128, 128],   // Unclassified
-  2: [165, 113, 78],    // Ground (brown)
-  3: [144, 238, 144],   // Low Vegetation (light green)
-  4: [34, 139, 34],     // Medium Vegetation (green)
-  5: [0, 100, 0],       // High Vegetation (dark green)
-  6: [255, 165, 0],     // Building (orange)
-  7: [255, 0, 0],       // Low Point (noise) (red)
-  8: [128, 128, 128],   // Reserved
-  9: [0, 0, 255],       // Water (blue)
-  10: [139, 90, 43],    // Rail
-  11: [128, 128, 128],  // Road Surface
-  12: [128, 128, 128],  // Reserved
-  13: [255, 255, 0],    // Wire - Guard (yellow)
-  14: [255, 200, 0],    // Wire - Conductor
-  15: [200, 200, 0],    // Transmission Tower
-  16: [100, 100, 100],  // Wire-Structure Connector
-  17: [0, 128, 255],    // Bridge Deck
-  18: [255, 0, 255],    // High Noise
-};
+export { CLASSIFICATION_COLORS };
 
 /**
  * Per-code overrides of a classification's display name and colour, e.g. for
