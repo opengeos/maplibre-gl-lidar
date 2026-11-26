@@ -540,6 +540,15 @@ console.log("Hidden:", hidden); // [7, 18]
 | 9 | Water |
 | 17 | Bridge Deck |
 
+The default colour for every code is exported as `CLASSIFICATION_COLORS` (a `Record<number, [r, g, b]>`, from a module with no dependencies), so a host can draw a matching legend or class picker without copying the table:
+
+```typescript
+import { CLASSIFICATION_COLORS, getClassificationName } from "maplibre-gl-lidar";
+
+const ground = CLASSIFICATION_COLORS[2]; // [165, 113, 78]
+const label = getClassificationName(2); // "Ground"
+```
+
 ### Dynamic COPC Streaming
 
 For large COPC (Cloud Optimized Point Cloud) files, dynamic streaming loads only the points visible in the current viewport, dramatically reducing initial load time and memory usage.
@@ -589,6 +598,23 @@ const { nodes, points } = await control.loadRegion(cloudId, [-123.074, 44.054, -
   maxPoints: 4_000_000,
 });
 control.clearPinnedRegion(cloudId); // let the area stream normally again
+```
+
+### Which URLs stream
+
+`loadPointCloud(url)` streams EPT datasets (URLs ending in `/ept.json`) and remote COPC files (`http(s)` URLs containing `.copc.`, unless the loading mode is `'full'`), and downloads anything else whole. If starting a COPC stream fails with a network or CORS error, it falls back to downloading the whole file, with no size limit.
+
+The same rules (the initial routing) are exported so a host can treat a URL the way the control will. Pass the effective loading mode: the `loadingMode` option given to `loadPointCloud`, else the control's `copcLoadingMode` (default `'dynamic'`). Because of the fallback, a host that caps download size should check streamed COPC URLs too; only EPT datasets never download whole.
+
+```typescript
+import { LidarControl, isStreamedPointCloudUrl } from "maplibre-gl-lidar";
+
+const copcLoadingMode = "full";
+const control = new LidarControl({ copcLoadingMode });
+// Pass the same mode the control loads with:
+isStreamedPointCloudUrl("https://example.com/a.copc.laz", copcLoadingMode); // false: downloaded whole
+isStreamedPointCloudUrl("https://example.com/a.copc.laz", "dynamic"); // true (may still fall back)
+isStreamedPointCloudUrl("https://example.com/data/ept.json"); // true
 ```
 
 ### EPT (Entwine Point Tile) Support
